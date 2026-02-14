@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>증상 기반 성분 가이드 - {{ symptom }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div class="max-w-3xl mx-auto p-6">
+        <div class="mb-8">
+            <a href="/" class="text-blue-600 hover:text-blue-800 font-semibold flex items-center">
+                <i class="fas fa-arrow-left mr-2"></i> 다시 검색하기
+            </a>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6">
+            <div class="flex items-center mb-6">
+                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-4">
+                    <i class="fas fa-stethoscope text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">증상 분석 결과</h1>
+                    <p class="text-gray-500">입력하신 증상: <span class="text-blue-600 font-bold">"{{ symptom }}"</span></p>
+                </div>
+            </div>
+
+            <hr class="border-gray-100 mb-8">
+
+            <div class="prose prose-blue max-w-none">
+                <div class="flex items-start mb-4">
+                    <span class="inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mr-2 mt-1">AI Guide</span>
+                    <h2 class="text-lg font-bold text-gray-800">이런 성분들이 도움이 될 수 있습니다</h2>
+                </div>
+                
+                <div class="bg-blue-50 rounded-xl p-6 text-gray-700 leading-relaxed text-base shadow-inner" style="white-space: pre-wrap;">{{ answer }}</div>
+            </div>
+        </div>
+
+        <div class="bg-orange-50 rounded-xl p-5 border border-orange-100 flex items-start">
+            <i class="fas fa-exclamation-triangle text-orange-400 mt-1 mr-3"></i>
+            <div class="text-xs text-orange-800 leading-5">
+                <p class="font-bold mb-1 underline">주의사항 및 면책 공고</p>
+                본 정보는 한국 식약처 DUR 데이터를 바탕으로 AI가 생성한 참고용 가이드입니다. 
+                개별 환자의 상태(기저질환, 알레르기 등)에 따라 적합한 약물이 달라질 수 있으므로, 
+                <strong>반드시 복용 전 미국 현지 약사 또는 의사에게 성분명을 제시하고 상담받으시기 바랍니다.</strong>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

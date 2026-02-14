@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ drug_name }} - 글로벌 약물 안전 검색</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <div class="max-w-4xl mx-auto p-5">
+        <header class="mb-10 text-center">
+            <h1 class="text-3xl font-extrabold text-blue-600 mb-2">{{ drug_name }}</h1>
+            <p class="text-gray-500">Active Ingredients: {{ ingredients }}</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <section class="bg-white p-6 rounded-xl shadow-md border-t-4 border-blue-500">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    🇺🇸 US FDA Guideline
+                </h2>
+                <div class="space-y-4 text-sm leading-relaxed">
+                    <div><h3 class="font-bold text-blue-700">[Purpose]</h3><p>{{ us_guideline.indications }}</p></div>
+                    <div><h3 class="font-bold text-blue-700">[Warnings]</h3><p class="text-xs">{{ us_guideline.warnings }}</p></div>
+                    <div><h3 class="font-bold text-blue-700">[Dosage]</h3><p>{{ us_guideline.dosage }}</p></div>
+                </div>
+            </section>
+
+            <section class="bg-white p-6 rounded-xl shadow-md border-t-4 border-red-500">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    🇰🇷 한국 식약처 DUR 안전 기준
+                </h2>
+                {% if dur_count > 0 %}
+                    <div class="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm font-bold">
+                        총 {{ dur_count }}건의 주의사항이 발견되었습니다.
+                    </div>
+                    <div class="space-y-4">
+                        {% for dur in kr_dur %}
+                        <div class="p-4 bg-gray-50 rounded-lg border-l-4 border-red-400">
+                            <span class="text-xs font-bold px-2 py-1 bg-red-100 text-red-600 rounded mb-2 inline-block">
+                                {{ dur.type }}
+                            </span>
+                            <p class="text-sm font-semibold mb-1 text-gray-800">
+                                성분: <span class="text-red-600">{{ dur.ingr_name }}</span>
+                            </p>
+                            <p class="text-xs text-gray-600 leading-normal">
+                                {{ dur.warning_msg }}
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-gray-500 text-center py-10">한국 DUR 기준 금기 사항이 없습니다.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Global Drug Safety</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-blue-50 h-screen flex items-center justify-center">
+    <div class="text-center bg-white p-10 rounded-2xl shadow-xl w-full max-w-lg">
+        <h1 class="text-3xl font-bold text-blue-600 mb-6">글로벌 약물 안전 다리</h1>
+        <p class="text-gray-500 mb-8">미국 약 이름을 입력하면 한국 DUR 정보를 함께 보여줍니다.</p>
+        <div class="flex gap-2">
+            <input type="text" id="drugInput" placeholder="예: Advil, Tylenol" class="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <button onclick="search()" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-bold">검색</button>
+        </div>
+    </div>
+    <script>
+        // index.html 하단 스크립트 수정
+        function search() {
+            const name = document.getElementById('drugInput').value;
+            // [기존] window.location.href = `/web-search/${name}`;
+            // [수정] 쿼리 파라미터(?q=) 방식으로 스마트 검색 호출
+            if(name) window.location.href = `/smart-search?q=${encodeURIComponent(name)}`;
+        }
+    </script>
+</body>
+</html>
