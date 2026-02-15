@@ -1,33 +1,63 @@
-import os, json
+import os
+import json
 from openai import OpenAI
-from prompts.intent_classifier import INTENT_CLASS_PROMPT, SYMPTOM_RESPONSE_PROMPT
+# 프롬프트 파일에서 필요한 텍스트들을 가져옵니다.
+from prompts.system_prompts import INTENT_CLASS_PROMPT
+from prompts.answer_prompts import SYMPTOM_RESPONSE_PROMPT
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+try:
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+except Exception:
+    client = None
 
 class AIService:
     @staticmethod
-    async def translate_symptom_to_eng(symptom: str):
-        """한국어 증상을 FDA 검색용 영어 의학 용어 리스트로 변환"""
-        prompt = f"""
-        사용자의 증상: "{symptom}"
-        이 증상을 완화하는 데 쓰이는 약물을 미국 FDA API에서 검색하려고 해. 
-        검색에 적합한 영어 의학 용어(단어 위주)를 3개 이내로 추출해줘.
-        응답은 반드시 JSON 리스트 형식으로만 해. 예: ["headache", "fever"]
-        """
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={ "type": "json_object" } # 실제 구현 시 {"keywords": [...]} 구조 추천
-        )
-        data = json.loads(res.choices[0].message.content)
-        return data.get("keywords", []) # ["headache", "pain"]
+    async def classify_intent(query: str):
+        """질문 분류 및 영어 키워드 동시 추출 (Router)"""
+        if not client:
+            return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
+            
+        try:
+            res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "의약품 분류 및 검색 키워드 생성 전문가."},
+                    {"role": "user", "content": INTENT_CLASS_PROMPT.format(user_query=query)}
+                ],
+                response_format={ "type": "json_object" }
+            )
+            return json.loads(res.choices[0].message.content)
+        except Exception:
+            # 에러 발생 시 기본값으로 제품 검색 처리
+            return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
 
     @staticmethod
     async def generate_symptom_answer(symptom, data):
-        """증상 기반 성분 안내 답변 생성"""
+        """성분 및 DUR 데이터를 기반으로 최종 AI 답변 생성 (RAG)"""
+        if not client:
+            return "OpenAI API 키가 설정되지 않아 답변을 생성할 수 없습니다."
+
+        try:
+            res = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "너는 성분 기반 상담사야. 제품명 언급 금지."},
+                    {"role": "user", "content": SYMPTOM_RESPONSE_PROMPT.format(symptom=symptom, data=str(data))}
+                ]
+            )
+            return res.choices[0].message.content
+        except Exception as e:
+            return f"답변 생성 중 오류가 발생했습니다: {str(e)}"
+
+    @staticmethod
+    async def generate_general_answer(query: str):
+        """일반 의학 지식 질문 처리"""
+        if not client:
+            return "OpenAI API 키가 설정되지 않았습니다."
+            
         res = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "너는 성분 기반 상담사야. 제품명 언급 금지."},
-                      {"role": "user", "content": SYMPTOM_RESPONSE_PROMPT.format(symptom=symptom, data=str(data))}]
+            messages=[{"role": "system", "content": "친절한 의료 지식 가이드."},
+                      {"role": "user", "content": query}]
         )
         return res.choices[0].message.content

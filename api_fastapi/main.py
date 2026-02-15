@@ -1,4 +1,7 @@
-import os, sys, django
+import os
+import sys
+import django
+import json
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -14,7 +17,7 @@ django.setup()
 from services.drug_service import DrugService
 from services.ai_service import AIService
 
-app = FastAPI()
+app = FastAPI(title="Global Drug Safety Intelligence")
 templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
 
 @app.get("/", response_class=HTMLResponse)
@@ -23,55 +26,49 @@ async def home(request: Request):
 
 @app.get("/web-search/{drug_name}", response_class=HTMLResponse)
 async def product_search(request: Request, drug_name: str):
-    """1번 케이스: 특정 제품 검색"""
-    fda = DrugService.search_fda(drug_name)
-    if not fda: return HTMLResponse("<h1>FDA 정보를 찾을 수 없습니다.</h1>")
+    """제품명 기반 검색"""
+    fda_result = DrugService.search_fda(drug_name)
+    if not fda_result:
+        return templates.TemplateResponse("error.html", {
+            "request": request, "message": f"'{drug_name}' 정보를 FDA에서 찾을 수 없습니다."
+        })
     
-    kr_dur = await DrugService.get_dur_by_ingr(fda['ingredients'])
+    kr_dur = await DrugService.get_dur_by_ingr(fda_result['ingredients'])
     return templates.TemplateResponse("search_result.html", {
-        "request": request, "drug_name": drug_name, "ingredients": fda['ingredients'],
-        "us_guideline": fda, "kr_dur": kr_dur, "dur_count": len(kr_dur)
+        "request": request, "drug_name": drug_name, "ingredients": fda_result['ingredients'],
+        "us_guideline": fda_result, "kr_dur": kr_dur, "dur_count": len(kr_dur)
     })
 
 @app.get("/smart-search", response_class=HTMLResponse)
 async def smart_search(request: Request, q: str):
-    # 1. AI에게 질문의 의도를 물어봅니다.
+    """지능형 RAG 검색 (증상 -> 영어 쿼리 -> FDA -> DUR)"""
+    if not q: return HTMLResponse("<script>alert('검색어를 입력하세요.'); history.back();</script>")
+
+    # STEP 1: AI 의도 분류 및 영어 검색 키워드 확보
     intent = await AIService.classify_intent(q)
     category = intent.get("category")
-    
-    print(f"--- [DEBUG] 분류 결과: {category} ---") # 터미널에서 확인용
 
     if category == "SYMPTOM_RELIEF":
         symptom = intent.get("symptom") or q
-        # 2. 증상 기반 DB 데이터 추출
-        raw_data = await DrugService.get_data_by_symptom(symptom)
-        # 3. AI 답변 생성 (symptom_result.html로 이동)
-        answer = await AIService.generate_symptom_answer(symptom, raw_data)
+        # LLM이 생성한 영어 키워드 사용 (예: ["headache", "fever"])
+        eng_kw = intent.get("fda_search_keywords", ["pain"])
         
-    # main.py의 SYMPTOM_RELIEF 분기 부분
-    elif category == "SYMPTOM_RELIEF":
-        symptom = intent.get("symptom") or q
+        # STEP 2: FDA에서 관련 영어 성분 추출
+        fda_ingrs = DrugService.get_ingrs_from_fda_by_symptoms(eng_kw)
         
-        # 1. 증상을 영어 키워드로 변환 (LLM)
-        eng_keywords = await AIService.translate_symptom_to_eng(symptom)
-    
-    # 2. FDA에서 관련 성분들 찾아오기 (FDA API)
-    fda_ingrs = DrugService.get_ingredients_from_fda(eng_keywords)
-    
-    # 3. 찾은 성분들로 한국 DUR 정보 매핑 (Local DB)
-    # 이 과정에서 영어 성분명을 한국어로 매핑하는 간단한 변환기가 필요할 수 있습니다.
-    raw_dur_data = await DrugService.get_dur_by_ingr_list(fda_ingrs)
-    
-    # 4. 최종 AI 답변 생성
-    answer = await AIService.generate_symptom_answer(symptom, raw_dur_data)
-    
-    return templates.TemplateResponse("symptom_result.html", {
-        "request": request, "symptom": symptom, "answer": answer
-    })
+        # STEP 3: 영어 성분 -> 한국 DUR 매핑
+        dur_data = await DrugService.get_dur_by_english_ingr_list(fda_ingrs)
+        
+        # STEP 4: 최종 답변 생성
+        answer = await AIService.generate_symptom_answer(symptom, dur_data)
+        
+        return templates.TemplateResponse("symptom_result.html", {
+            "request": request, "symptom": symptom, "answer": answer
+        })
 
-    # PRODUCT_SPECIFIC 이거나 분류에 실패한 경우 기존 제품 검색 실행
-    drug_name = intent.get("target_drug") or q
-    return await product_search(request, drug_name)
+    # 제품 검색 혹은 일반 상담
+    target = intent.get("target_drug") or q
+    return await product_search(request, target)
 
 if __name__ == "__main__":
     import uvicorn
