@@ -6,7 +6,10 @@ from datetime import datetime
 from urllib.parse import unquote
 import json
 
-# 1. Django 환경 설정
+import sys
+
+# 1. Django 환경 설정 (상위 디렉토리의 backend_django 추가)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../backend_django')))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 

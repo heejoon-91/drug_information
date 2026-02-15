@@ -1,0 +1,35 @@
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Files that might be created on a remote share
+.Spotlight-V100
+.Trashes
+
+### 개발 도구 (IDE) ###
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+### 환경 변수 및 보안 (매우 중요) ###
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+### 언어/프레임워크 공통 (Node.js, Python 등) ###
+node_modules/
+__pycache__/
+venv/
+.venv/
+dist/
+build/
+out/
+*.log
