@@ -5,16 +5,29 @@ from openai import OpenAI
 from prompts.system_prompts import INTENT_CLASS_PROMPT
 from prompts.answer_prompts import SYMPTOM_RESPONSE_PROMPT
 
-try:
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-except Exception:
-    client = None
 
 class AIService:
-    @staticmethod
-    async def classify_intent(query: str):
+    _client = None
+
+    @classmethod
+    def get_client(cls):
+        if cls._client:
+            return cls._client
+        try:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                cls._client = OpenAI(api_key=api_key)
+            return cls._client
+        except Exception as e:
+            print(f"Error initializing OpenAI client: {e}")
+            return None
+
+    @classmethod
+    async def classify_intent(cls, query: str):
         """질문 분류 및 영어 키워드 동시 추출 (Router)"""
+        client = cls.get_client()
         if not client:
+            print("OpenAI Client is None. Returning default.")
             return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
             
         try:
@@ -24,16 +37,19 @@ class AIService:
                     {"role": "system", "content": "의약품 분류 및 검색 키워드 생성 전문가."},
                     {"role": "user", "content": INTENT_CLASS_PROMPT.format(user_query=query)}
                 ],
+                temperature=0,
                 response_format={ "type": "json_object" }
             )
             return json.loads(res.choices[0].message.content)
-        except Exception:
+        except Exception as e:
+            print(f"Error in classify_intent: {e}")
             # 에러 발생 시 기본값으로 제품 검색 처리
             return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
 
-    @staticmethod
-    async def generate_symptom_answer(symptom, data):
+    @classmethod
+    async def generate_symptom_answer(cls, symptom, data):
         """성분 및 DUR 데이터를 기반으로 최종 AI 답변 생성 (RAG)"""
+        client = cls.get_client()
         if not client:
             return "OpenAI API 키가 설정되지 않아 답변을 생성할 수 없습니다."
 
@@ -49,9 +65,10 @@ class AIService:
         except Exception as e:
             return f"답변 생성 중 오류가 발생했습니다: {str(e)}"
 
-    @staticmethod
-    async def generate_general_answer(query: str):
+    @classmethod
+    async def generate_general_answer(cls, query: str):
         """일반 의학 지식 질문 처리"""
+        client = cls.get_client()
         if not client:
             return "OpenAI API 키가 설정되지 않았습니다."
             

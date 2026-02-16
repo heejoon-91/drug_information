@@ -5,6 +5,13 @@ import asyncio
 
 class DrugService:
     FDA_BASE_URL = "https://api.fda.gov/drug/label.json"
+    
+    # 성분명 매핑 테이블 (FDA generic_name -> KR DUR ingr_eng_name)
+    MANUAL_INGR_MAPPING = {
+        "DIVALPROEX SODIUM": "VALPROIC ACID",
+        "DIVALPROEX": "VALPROIC ACID",
+        # 필요 시 추가
+    }
 
     @classmethod
     async def search_fda(cls, name: str):
@@ -30,12 +37,17 @@ class DrugService:
                 result = data[0]
                 openfda = result.get('openfda', {})
                 
-                # 성분명 추출 (generic_name 우선, 없으면 active_ingredient)
-                ingr_list = openfda.get('generic_name', [])
-                if not ingr_list:
-                    ingr_list = result.get('active_ingredient', [])
+                # 성분명 추출 (generic_name, substance_name 모두 포함)
+                # substance_name이 DUR DB의 'Active Moiety'와 일치할 확률이 높음 (예: DIVALPROEX -> VALPROIC ACID)
+                generic_names = openfda.get('generic_name', [])
+                substance_names = openfda.get('substance_name', [])
                 
-                ingr_text = ", ".join(ingr_list) if isinstance(ingr_list, list) else str(ingr_list)
+                combined_ingrs = list(set(generic_names + substance_names))
+                
+                if not combined_ingrs:
+                    combined_ingrs = result.get('active_ingredient', [])
+                
+                ingr_text = ", ".join(combined_ingrs) if isinstance(combined_ingrs, list) else str(combined_ingrs)
 
                 return {
                     "brand_name": name,
@@ -69,8 +81,12 @@ class DrugService:
                     try:
                         results = res.json().get('results', [])
                         for item in results:
-                            ingrs = item.get('openfda', {}).get('generic_name', [])
-                            for i in ingrs:
+                            openfda = item.get('openfda', {})
+                            # generic_name과 substance_name 모두 수집
+                            generics = openfda.get('generic_name', [])
+                            substances = openfda.get('substance_name', [])
+                            
+                            for i in generics + substances:
                                 all_ingrs.add(i.upper())
                     except:
                         continue
@@ -101,17 +117,84 @@ class DrugService:
             "severity": d.critical_value
         } for d in durs]
 
+    @classmethod
+    async def get_fda_warnings_by_ingr(cls, ingr_name: str):
+        """
+        성분명으로 FDA 경고(Warnings) 정보 조회
+        """
+        params = {
+            'search': f'openfda.generic_name:"{ingr_name}"',
+            'limit': 1
+        }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            try:
+                res = await client.get(cls.FDA_BASE_URL, params=params)
+                if res.status_code == 200:
+                    data = res.json().get('results', [])
+                    if data:
+                        return data[0].get('warnings', ["No FDA warning found."])[0]
+            except Exception:
+                pass
+        return None
+
+    @classmethod
+    async def get_enriched_dur_info(cls, ingr_list: list):
+        """
+        영어 성분명 리스트를 받아 KR DUR 및 FDA Warning 정보를 병합하여 반환
+        """
+        from drugs.models import DurMaster
+        enriched_data = []
+
+        # 1. 고유 성분명으로 정리
+        unique_ingrs = sorted(list(set([i.upper() for i in ingr_list])))
+
+        for ingr in unique_ingrs:
+            # 2. KR DUR 조회 (동기 DB 호출을 비동기로 래핑해야 함 - 여기서는 sync_to_async 사용 권장되지만, loop 내 호출이므로 주의)
+            # 성능을 위해 전체 쿼리를 먼저 하고 매핑하는 것이 좋지만, 일단 간단 구현
+            durs = await cls._get_kr_durs_async(ingr)
+            
+            # 3. FDA Warning 조회
+            fda_warn = await cls.get_fda_warnings_by_ingr(ingr)
+            
+            enriched_data.append({
+                "ingredient": ingr,
+                "kr_durs": durs,
+                "fda_warning": fda_warn
+            })
+            
+        return enriched_data
+
+    @classmethod
+    @sync_to_async
+    def _get_kr_durs_async(cls, ingr_name):
+        """비동기 문맥에서 DB 호출을 위한 헬퍼"""
+        from drugs.models import DurMaster
+        
+        # 매핑 적용 (수동 매핑은 제거하고 FDA 데이터에 의존)
+        # upper_name = ingr_name.upper()
+        # target_name = cls.MANUAL_INGR_MAPPING.get(upper_name, upper_name)
+        
+        clean_name = ingr_name.split()[0].lower() # target_name -> ingr_name
+        if not clean_name: return []
+        
+        durs = DurMaster.objects.filter(ingr_eng_name__icontains=clean_name)
+        return [{
+            "type": d.dur_type,
+            "kor_name": d.ingr_kor_name,
+            "warning": d.prohbt_content or d.remark
+        } for d in durs]
+
     @staticmethod
     @sync_to_async
     def get_dur_by_english_ingr_list(ingr_list):
-        """영어 성분명 리스트를 한국 DUR 데이터와 매핑"""
+        """(Legacy) 영어 성분명 리스트를 한국 DUR 데이터와 매핑"""
         from drugs.models import DurMaster
         if not ingr_list:
             return []
 
         query = Q()
         for eng_name in ingr_list:
-            clean_name = eng_name.split()[0].lower() # 'IBUPROFEN TABLET' -> 'ibuprofen'
+            clean_name = eng_name.split()[0].lower()
             if clean_name:
                 query |= Q(ingr_eng_name__icontains=clean_name)
         

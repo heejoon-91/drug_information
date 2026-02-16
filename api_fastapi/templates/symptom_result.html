@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
+
 <body class="bg-gray-50 text-gray-900">
     <div class="max-w-3xl mx-auto p-6">
         <div class="mb-8">
@@ -30,11 +32,13 @@
 
             <div class="prose prose-blue max-w-none">
                 <div class="flex items-start mb-4">
-                    <span class="inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mr-2 mt-1">AI Guide</span>
+                    <span class="inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mr-2 mt-1">AI
+                        Guide</span>
                     <h2 class="text-lg font-bold text-gray-800">이런 성분들이 도움이 될 수 있습니다</h2>
                 </div>
-                
-                <div class="bg-blue-50 rounded-xl p-6 text-gray-700 leading-relaxed text-base shadow-inner" style="white-space: pre-wrap;">{{ answer }}</div>
+
+                <div class="bg-blue-50 rounded-xl p-6 text-gray-700 leading-relaxed text-base shadow-inner"
+                    style="white-space: pre-wrap;">{{ answer }}</div>
             </div>
         </div>
 
@@ -42,11 +46,120 @@
             <i class="fas fa-exclamation-triangle text-orange-400 mt-1 mr-3"></i>
             <div class="text-xs text-orange-800 leading-5">
                 <p class="font-bold mb-1 underline">주의사항 및 면책 공고</p>
-                본 정보는 한국 식약처 DUR 데이터를 바탕으로 AI가 생성한 참고용 가이드입니다. 
-                개별 환자의 상태(기저질환, 알레르기 등)에 따라 적합한 약물이 달라질 수 있으므로, 
+                본 정보는 한국 식약처 DUR 데이터를 바탕으로 AI가 생성한 참고용 가이드입니다.
+                개별 환자의 상태(기저질환, 알레르기 등)에 따라 적합한 약물이 달라질 수 있으므로,
                 <strong>반드시 복용 전 미국 현지 약사 또는 의사에게 성분명을 제시하고 상담받으시기 바랍니다.</strong>
             </div>
         </div>
+
+        <!-- 팝업 열기 버튼 -->
+        <div class="mt-6 text-center">
+            <button onclick="openModal()"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 flex items-center justify-center mx-auto">
+                <i class="fas fa-exclamation-circle mr-2"></i> 상세 DUR & FDA 안전 정보 보기
+            </button>
+        </div>
     </div>
-</body>
-</html>
+
+    <!-- DUR 상세 정보 모달 (Popup) -->
+    <div id="durModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <!-- 모달 헤더 -->
+            <div class="sticky top-0 bg-white border-b border-gray-100 p-6 flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-800">💊 성분별 상세 안전 정보 (DUR & FDA)</h2>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- 모달 내용 -->
+            <div class="p-6 space-y-8">
+                {% if dur_details %}
+                {% for item in dur_details %}
+                <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                    <div class="flex items-center mb-4">
+                        <span
+                            class="bg-blue-100 text-blue-800 text-sm font-bold px-3 py-1 rounded-full mr-3">Ingredient</span>
+                        <h3 class="text-xl font-bold text-gray-900">{{ item.ingredient }}</h3>
+                        {% if item.kr_durs %}
+                        <span class="text-sm text-gray-500 ml-2">({{ item.kr_durs[0].kor_name }})</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Grid for Split View -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Left: KR DUR -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+                            <h4 class="font-bold text-red-600 mb-3 flex items-center">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg"
+                                    class="w-6 h-4 mr-2 border">
+                                한국 DUR (식약처)
+                            </h4>
+                            {% if item.kr_durs %}
+                            <ul class="space-y-3">
+                                {% for dur in item.kr_durs %}
+                                <li class="text-sm">
+                                    <span
+                                        class="inline-block bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded font-bold mb-1">{{
+                                        dur.type }}</span>
+                                    <p class="text-gray-700">{{ dur.warning }}</p>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="text-gray-400 text-sm">등록된 주의사항이 없습니다.</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Right: FDA Warnings -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
+                            <h4 class="font-bold text-blue-600 mb-3 flex items-center">
+                                <img src="https://upload.wikimedia.org/wikipedia/en/a/a4/Flag_of_the_United_States.svg"
+                                    class="w-6 h-4 mr-2 border">
+                                미국 FDA (Warnings)
+                            </h4>
+                            {% if item.fda_warning %}
+                            <p class="text-xs text-gray-600 leading-relaxed max-h-40 overflow-y-auto">
+                                {{ item.fda_warning }}
+                            </p>
+                            {% else %}
+                            <p class="text-gray-400 text-sm">FDA 경고 문구가 발견되지 않았습니다.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-center py-10 text-gray-500">
+                    표시할 상세 데이터가 없습니다.<br>
+                    (FDA 또는 DUR 데이터를 불러오지 못했습니다.)
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="p-6 border-t border-gray-100 bg-gray-50 text-right">
+                <button onclick="closeModal()"
+                    class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-6 rounded-lg transition">
+                    닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openModal() {
+            document.getElementById('durModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden'; // 스크롤 방지
+        }
+        function closeModal() {
+            document.getElementById('durModal').classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        // DUR 정보가 있으면 페이지 로드 시 자동으로 팝업 열기
+        {% if dur_details %}
+        window.addEventListener('load', function () {
+            setTimeout(openModal, 300); // 자연스러운 등장을 위해 약간의 지연
+        });
+        {% endif %}
+    </script>
