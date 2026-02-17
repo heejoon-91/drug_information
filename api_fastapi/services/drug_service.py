@@ -20,8 +20,8 @@ class DrugService:
         상세 정보(적응증, 경고, 용법)를 포함하여 반환
         """
         params = {
-            'search': f'openfda.brand_name:"{name}"',
-            'limit': 1
+            'search': f'openfda.brand_name:"{name}"+OR+openfda.generic_name:"{name}"',
+            # 'limit': 1
         }
         
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -71,7 +71,7 @@ class DrugService:
         async with httpx.AsyncClient(timeout=5.0) as client:
             tasks = []
             for kw in keywords:
-                url = f"{cls.FDA_BASE_URL}?search=indications_and_usage:{kw}&limit=3"
+                url = f"{cls.FDA_BASE_URL}?search=indications_and_usage:{kw}"
                 tasks.append(client.get(url))
             
             responses = await asyncio.gather(*tasks, return_exceptions=True)
@@ -124,7 +124,7 @@ class DrugService:
         """
         params = {
             'search': f'openfda.generic_name:"{ingr_name}"',
-            'limit': 1
+            # 'limit': 1
         }
         async with httpx.AsyncClient(timeout=5.0) as client:
             try:

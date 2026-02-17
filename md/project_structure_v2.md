@@ -1,4 +1,4 @@
-# 프로젝트 구조 설명 (Project Structure Overview)
+# 프로젝트 구조 설명 (Project Structure Overview) - V2
 
 이 프로젝트는 **Django(ORM/Admin)**와 **FastAPI(Service/API)**가 결합된 하이브리드 구조를 가지고 있습니다.
 각 디렉토리와 핵심 파일의 역할을 상세 설명합니다.
@@ -11,8 +11,13 @@ FastAPI를 사용하여 사용자의 요청을 처리하고, AI 및 외부 API(F
 
 *   **`main.py`**:
     *   FastAPI 앱의 진입점(Entry Point)입니다.
+    *   LangGraph 워크플로우를 초기화하고 실행합니다. (`app.state.graph`)
     *   API 엔드포인트(`smart-search` 등)가 정의되어 있으며, 요청을 받아 적절한 서비스(`Service`)로 연결합니다.
     *   환경 변수 로딩, 로깅 설정, 템플릿 렌더링을 담당합니다.
+*   **`graph_agent/`**: LangGraph 기반의 대화형 에이전트 로직입니다.
+    *   `builder.py`: 그래프 구조(Node, Edge)를 정의하고 컴파일합니다.
+    *   `nodes.py`: 각 단계별 실행 로직(분류, 검색, 답변 생성)이 구현되어 있습니다.
+    *   `state.py`: 그래프 내에서 공유되는 상태(`AgentState`) 데이터 구조를 정의합니다.
 *   **`services/`**: 비즈니스 로직이 모여 있는 곳입니다.
     *   `ai_service.py`: OpenAI API와 통신하며 의도 분류, 답변 생성을 담당합니다. (싱글톤 패턴, Lazy Init 적용)
     *   `drug_service.py`: FDA API 조회, DUR DB 조회, 데이터 병합 등 데이터 처리 로직을 담당합니다.
@@ -50,8 +55,13 @@ Django의 강력한 ORM 기능을 사용하여 DB 스키마를 정의하고 데�
 프로젝트 이해를 돕기 위해 생성된 가이드 문서들입니다.
 
 *   **`chatbot_config_guide.md`**: 챗봇의 성격, 답변 스타일, 검색 범위를 수정하는 방법 가이드.
-*   **`chatbot_data_flow.md`**: 사용자 질문부터 답변 출력까지의 데이터 흐름 설명.
-*   **`project_structure.md`**: (본 문서) 프로젝트 디렉토리 구조 설명.
+*   **`chatbot_data_flow.md`**: 사용자 질문부터 답변 출력까지의 데이터 흐름 설명. (V2)
+*   **`chatbot_data_flow_v1.md`**: (Legacy) LangGraph 도입 전 데이터 흐름 설명.
+*   **`chatbot_data_flow_v2.md`**: (Current) LangGraph 도입 후 데이터 흐름 및 성능 분석.
+*   **`langgraph_structure.md`**: LangGraph의 노드, 엣지, 상태 정의 및 워크플로우 다이어그램.
+*   **`project_structure.md`**: (본 문서) 프로젝트 디렉토리 구조 설명. (V2)
+*   **`project_structure_v1.md`**: (Legacy) LangGraph 도입 전 프로젝트 구조.
+*   **`project_structure_v2.md`**: (Current) LangGraph 도입 후 프로젝트 구조.
 
 ---
 

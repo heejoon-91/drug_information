@@ -28,6 +28,8 @@ from fastapi.templating import Jinja2Templates
 # 2. 서비스 로드
 from services.drug_service import DrugService
 from services.ai_service import AIService
+# 3. LangGraph 로드
+from graph_agent.builder import build_graph
 
 app = FastAPI(title="Global Drug Safety Intelligence")
 templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
@@ -40,6 +42,16 @@ async def startup_event():
         logger.error("CRITICAL: OPENAI_API_KEY is missing! Chatbot features will not work.")
     else:
         logger.info(f"OPENAI_API_KEY loaded successfully. (Starts with: {api_key[:7]}...)")
+    
+    # LangSmith Config (Map custom key if needed)
+    if os.getenv("LANGSMITH_API_KEY") and not os.getenv("LANGCHAIN_API_KEY"):
+        os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGSMITH_API_KEY")
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        logger.info("Mapped LANGSMITH_API_KEY to LANGCHAIN_API_KEY and enabled tracing.")
+
+    # Initialize LangGraph
+    app.state.graph = build_graph()
+    logger.info("LangGraph workflow initialized.")
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -70,51 +82,65 @@ async def product_search(request: Request, drug_name: str):
 
 @app.get("/smart-search", response_class=HTMLResponse)
 async def smart_search(request: Request, q: str):
-    """지능형 RAG 검색 (증상 -> 영어 쿼리 -> FDA -> DUR)"""
+    """지능형 RAG 검색 (LangGraph 기반)"""
     if not q: return HTMLResponse("<script>alert('검색어를 입력하세요.'); history.back();</script>")
 
-    logger.info(f"User Query: {q}")
+    logger.info(f"LangGraph User Query: {q}")
 
-    # STEP 1: AI 의도 분류
-    intent = await AIService.classify_intent(q)
-    logger.info(f"Classified Intent: {intent}")
-
-    
-    category = intent.get("category")
-    if category == "SYMPTOM_RELIEF":
-        symptom = intent.get("symptom") or q
-        eng_kw = intent.get("fda_search_keywords", ["pain"])
-        logger.info(f"Processing Symptom: {symptom}, Keywords: {eng_kw}")
-
-        
-        # STEP 2: FDA 관련 성분 추출 (비동기)
-        fda_ingrs = await DrugService.get_ingrs_from_fda_by_symptoms(eng_kw)
-        
-        # STEP 3: 성분 -> DUR 매핑 (FDA 정보 포함)
-        dur_data = await DrugService.get_enriched_dur_info(fda_ingrs)
-        
-        # AI 답변 생성을 위한 요약 데이터 생성
-        summary_for_ai = []
-        for item in dur_data:
-            summary = f"Ingredient: {item['ingredient']}\n"
-            summary += f"FDA Warning: {item['fda_warning'][:200] if item['fda_warning'] else 'None'}\n"
-            kr_warnings = [f"{d['type']}: {d['warning']}" for d in item['kr_durs']]
-            summary += f"KR DUR: {', '.join(kr_warnings)}"
-            summary_for_ai.append(summary)
-        
-        # STEP 4: 답변 생성
-        answer = await AIService.generate_symptom_answer(symptom, "\n---\n".join(summary_for_ai))
-        
-        return templates.TemplateResponse("symptom_result.html", {
-            "request": request, 
-            "symptom": symptom, 
-            "answer": answer,
-            "dur_details": dur_data  # 팝업용 상세 데이터 전달
+    # Run LangGraph Workflow
+    inputs = {"query": q}
+    try:
+        result = await app.state.graph.ainvoke(inputs)
+    except Exception as e:
+        logger.error(f"Graph Execution Error: {e}")
+        return templates.TemplateResponse("error.html", {
+            "request": request, "message": f"처리 중 오류가 발생했습니다: {str(e)}"
         })
 
-    # 제품 검색 혹은 일반 상담
-    target = intent.get("target_drug") or q
-    return await product_search(request, target)
+    category = result.get("category")
+    final_answer = result.get("final_answer", "")
+    
+    logger.info(f"Graph Result Category: {category}")
+
+    if category == "symptom_recommendation":
+        return templates.TemplateResponse("symptom_result.html", {
+            "request": request, 
+            "symptom": q, 
+            "answer": final_answer,
+            "dur_details": result.get("dur_data", [])
+        })
+
+    elif category == "product_request":
+        fda = result.get("fda_data")
+        dur = result.get("dur_data", [])
+        
+        if not fda:
+             return templates.TemplateResponse("error.html", {
+                "request": request, "message": final_answer or f"'{q}' 관련 정보를 찾을 수 없습니다."
+            })
+            
+        return templates.TemplateResponse("search_result.html", {
+            "request": request,
+            "drug_name": fda.get("brand_name", q),
+            "ingredients": fda.get("active_ingredients"),
+            "us_guideline": fda,
+            "kr_dur": dur,
+            "dur_count": len(dur)
+        })
+        
+    elif category == "general_medical":
+        # 일반 의학 질문은 증상 결과 페이지 형식을 빌려 텍스트 위주로 표시
+        return templates.TemplateResponse("symptom_result.html", {
+            "request": request,
+            "symptom": q,
+            "answer": final_answer,
+            "dur_details": [] # DUR 정보 없음
+        })
+    
+    else: # error or invalid
+        return templates.TemplateResponse("error.html", {
+            "request": request, "message": final_answer or "요청을 처리할 수 없습니다."
+        })
 
 # API 엔드포인트 (JSON 반환용)
 @router.get("/global-search/{drug_name}")

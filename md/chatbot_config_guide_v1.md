@@ -46,8 +46,5 @@ FDA 및 DUR 데이터베이스에서 정보를 가져오는 방식과 양을 조
 ### `api_fastapi/services/drug_service.py`
 *   **핵심 메서드**: `search_fda`, `get_ingrs_from_fda_by_symptoms`
 *   **주요 파라미터**:
-    *   `limit`: 
-        *   FDA API 요청 시 가져올 결과의 개수입니다.
-        *   현재 증상 검색 시 `limit=3`으로 설정되어 있어, 상위 3개 약물군을 분석합니다.
     *   `search` 쿼리 파라미터:
         *   FDA 데이터의 어떤 필드(`generic_name`, `indications_and_usage` 등)를 검색할지 결정합니다.

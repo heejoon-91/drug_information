@@ -1,6 +1,6 @@
 import os
 import json
-from openai import OpenAI
+from openai import AsyncOpenAI
 # 프롬프트 파일에서 필요한 텍스트들을 가져옵니다.
 from prompts.system_prompts import INTENT_CLASS_PROMPT
 from prompts.answer_prompts import SYMPTOM_RESPONSE_PROMPT
@@ -16,7 +16,7 @@ class AIService:
         try:
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
-                cls._client = OpenAI(api_key=api_key)
+                cls._client = AsyncOpenAI(api_key=api_key)
             return cls._client
         except Exception as e:
             print(f"Error initializing OpenAI client: {e}")
@@ -28,14 +28,14 @@ class AIService:
         client = cls.get_client()
         if not client:
             print("OpenAI Client is None. Returning default.")
-            return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
+            return {"category": "product_request", "category_reason": "No Client", "keyword": query}
             
         try:
-            res = client.chat.completions.create(
+            res = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "의약품 분류 및 검색 키워드 생성 전문가."},
-                    {"role": "user", "content": INTENT_CLASS_PROMPT.format(user_query=query)}
+                    {"role": "system", "content": INTENT_CLASS_PROMPT.format(user_query=query)},
+                    # {"role": "user", "content": query} # Already integrated in system prompt
                 ],
                 temperature=0,
                 response_format={ "type": "json_object" }
@@ -44,7 +44,7 @@ class AIService:
         except Exception as e:
             print(f"Error in classify_intent: {e}")
             # 에러 발생 시 기본값으로 제품 검색 처리
-            return {"category": "PRODUCT_SPECIFIC", "target_drug": query, "fda_search_keywords": ["pain"]}
+            return {"category": "product_request", "keyword": query}
 
     @classmethod
     async def generate_symptom_answer(cls, symptom, data):
@@ -54,11 +54,11 @@ class AIService:
             return "OpenAI API 키가 설정되지 않아 답변을 생성할 수 없습니다."
 
         try:
-            res = client.chat.completions.create(
+            res = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "너는 성분 기반 상담사야. 제품명 언급 금지."},
-                    {"role": "user", "content": SYMPTOM_RESPONSE_PROMPT.format(symptom=symptom, data=str(data))}
+                    {"role": "system", "content": SYMPTOM_RESPONSE_PROMPT.format(symptom=symptom, data=str(data))},
+                    # {"role": "user", "content": ... } # Already integrated
                 ]
             )
             return res.choices[0].message.content
@@ -72,7 +72,7 @@ class AIService:
         if not client:
             return "OpenAI API 키가 설정되지 않았습니다."
             
-        res = client.chat.completions.create(
+        res = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": "친절한 의료 지식 가이드."},
                       {"role": "user", "content": query}]

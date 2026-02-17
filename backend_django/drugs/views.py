@@ -24,7 +24,7 @@ class DrugSearchView(APIView):
             Q(item_name__icontains=query)
         ).values(
             'ingredient_en', 'ingredient_kr', 'item_name', 'efficacy', 'precautions', 'dur_data'
-        )[:20] # 상위 20개만 반환
+        )
 
         return Response({
             "results": list(queryset),
