@@ -24,9 +24,7 @@ class EYakInfo(models.Model):
     
     # 문서 링크 (제품 허가 상세정보 API의 PDF 다운로드 링크 등)
     # 텍스트 데이터가 부족할 경우 LLM이 직접 참고할 수 있는 리소스로 활용합니다.
-    ee_doc_url = models.URLField(max_length=500, blank=True, null=True, verbose_name="효능효과문서URL")
-    ud_doc_url = models.URLField(max_length=500, blank=True, null=True, verbose_name="용법용량문서URL")
-    nb_doc_url = models.URLField(max_length=500, blank=True, null=True, verbose_name="주의사항문서URL")
+    # ee_doc_url, ud_doc_url, nb_doc_url 필드는 사용하지 않으므로 제거함
     
     # 메타 데이터
     item_image = models.URLField(max_length=500, blank=True, null=True, verbose_name="제품이미지URL")
