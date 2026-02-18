@@ -26,3 +26,11 @@ cryptography            # 보안 및 암호화 관련
 python-jose[cryptography] # JWT 토큰 생성 및 검증
 passlib[bcrypt]         # 비밀번호 해싱
 python-multipart        # 로그인 폼 데이터 처리
+
+# --- Added by Agent ---
+djangorestframework     # REST API 구축 (추천)
+django-cors-headers     # 프론트엔드 연동 시 CORS 해결 (추천)
+tqdm                    # 데이터 처리 진행률 표시 (Scripts용)
+ipython                 # 향상된 쉘 환경 (manage.py shell_plus 등)
+jinja2                  # 템플릿 엔진 (필수)
+tiktoken                # OpenAI 토큰 계산 (권장)
