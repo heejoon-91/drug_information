@@ -44,11 +44,12 @@ class DrugPermitInfo(models.Model):
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
     main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
     etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
-    # valid_term = models.TextField(blank=True, null=True, verbose_name="유효기한") # 스크린샷에 안 보임, 안전을 위해 주석 처리
-    
+    permit_date = models.DateField(null=True, blank=True, verbose_name="허가일자")
+    valid_term = models.TextField(blank=True, null=True, verbose_name="유효기한")
+
     class Meta:
         db_table = 'drug_permit_info'
-        managed = False  # 이미 존재하는 테이블이라고 가정
+        managed = True
         verbose_name = "의약품 허가 정보"
         verbose_name_plural = "의약품 허가 정보 목록"
 

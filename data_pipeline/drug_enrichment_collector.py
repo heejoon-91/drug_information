@@ -12,7 +12,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../back
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from drugs.models import EYakInfo
+from drugs.models import DrugPermitInfo
 
 class DrugEnrichmentCollector:
     def __init__(self):
@@ -56,7 +56,7 @@ class DrugEnrichmentCollector:
                 for item in items:
                     # [데이터 매핑] 대문자 키 대응
                     item_seq = item.get('ITEM_SEQ')
-                    EYakInfo.objects.update_or_create(
+                    DrugPermitInfo.objects.update_or_create(
                         item_seq=item_seq,
                         defaults={
                             'item_name': item.get('ITEM_NAME'),
@@ -64,7 +64,8 @@ class DrugEnrichmentCollector:
                             'entp_name': item.get('ENTP_NAME'),
                             'etc_otcc_name': item.get('SPCLTY_PBLC'),
                             'main_ingr_name': item.get('ITEM_INGR_NAME'),
-                            'source_updated_at': self.format_date(item.get('ITEM_PERMIT_DATE'))
+                            'permit_date': self.format_date(item.get('ITEM_PERMIT_DATE')),
+                            'valid_term': item.get('VALID_TERM')
                         }
                     )
 
