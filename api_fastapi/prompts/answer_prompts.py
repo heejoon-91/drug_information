@@ -110,13 +110,23 @@ Example with 5 ingredients:
 
 """
 
-# 성분 및 DUR 데이터를 기반으로 답변을 생성하기 위한 프롬프트 포맷
+# 성분 및 DUR 데이터 + 사용자 프로필을 기반으로 답변을 생성하기 위한 프롬프트 포맷
 SYMPTOM_RESPONSE_PROMPT = ANSWER_SYSTEM + """
 
 ---
 [User Input Data]
 User Symptom: {symptom}
+
+[User Health Profile]
+- Current Medications: {medications}
+- Allergies: {allergies}
+- Chronic Diseases: {chronic_diseases}
+
 Drug Data with DUR: {data}
 
 Please generate the response based on the above safety rules and data.
+**CRITICAL**: 
+1. Check if any recommended ingredients conflict with the user's allergies or chronic diseases.
+2. **MUST Check for Drug-Drug Interactions**: Compare the recommended ingredients against the user's "Current Medications". If there is a known interaction (e.g., NSAIDs with Hypertension meds, Aspirin with Blood Thinners), YOU MUST WARN THE USER explicitly.
+3. If specific interaction data is not provided in "Drug Data with DUR", use your general medical knowledge to identify common contraindications.
 """

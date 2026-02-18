@@ -8,3 +8,4 @@ class AgentState(TypedDict):
     fda_data: Optional[Any] # Can be dict or list
     dur_data: Optional[List[dict]]
     final_answer: Optional[str]
+    user_profile: Optional[dict]

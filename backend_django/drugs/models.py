@@ -38,6 +38,22 @@ class EYakInfo(models.Model):
         verbose_name = "의약품 상세 정보"
         verbose_name_plural = "의약품 상세 정보 목록"
 
+# 1.5. 의약품 제품 허가 정보 (검색용)
+class DrugPermitInfo(models.Model):
+    item_seq = models.CharField(max_length=50, primary_key=True, verbose_name="품목기준코드")
+    item_name = models.TextField(verbose_name="제품명")
+    item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
+    entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
+    main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
+    etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
+    # valid_term = models.TextField(blank=True, null=True, verbose_name="유효기한") # 스크린샷에 안 보임, 안전을 위해 주석 처리
+    
+    class Meta:
+        db_table = 'drug_permit_info'
+        managed = False  # 이미 존재하는 테이블이라고 가정
+        verbose_name = "의약품 허가 정보"
+        verbose_name_plural = "의약품 허가 정보 목록"
+
 # 2. DUR 통합 마스터 테이블 (기존 유지)
 class DurMaster(models.Model):
     dur_type = models.CharField(max_length=50, db_index=True, verbose_name="금기유형")
@@ -54,3 +70,18 @@ class DurMaster(models.Model):
     class Meta:
         db_table = 'dur_master'
         unique_together = ('dur_type', 'ingr_code', 'critical_value')
+
+# 3. 사용자 건강 정보 프로필
+from django.contrib.auth.models import User
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name="사용자")
+    current_medications = models.TextField(blank=True, null=True, verbose_name="복용 중인 약")
+    allergies = models.TextField(blank=True, null=True, verbose_name="알러지")
+    chronic_diseases = models.TextField(blank=True, null=True, verbose_name="기저질환")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    class Meta:
+        db_table = 'user_profile'
+        verbose_name = "사용자 프로필"
+        verbose_name_plural = "사용자 프로필 목록"

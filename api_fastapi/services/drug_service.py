@@ -156,6 +156,14 @@ class DrugService:
             # 3. FDA Warning 조회
             fda_warn = await cls.get_fda_warnings_by_ingr(ingr)
             
+            # [Translation & Summarization]
+            if fda_warn:
+                from services.ai_service import AIService
+                # 요약 실행 (병목 가능성 있으나, 정확도 위해 수행)
+                summary = await AIService.summarize_fda_warning(fda_warn)
+                if summary:
+                    fda_warn = summary
+            
             enriched_data.append({
                 "ingredient": ingr,
                 "kr_durs": durs,
@@ -165,42 +173,150 @@ class DrugService:
         return enriched_data
 
     @classmethod
-    @sync_to_async
-    def _get_kr_durs_async(cls, ingr_name):
-        """비동기 문맥에서 DB 호출을 위한 헬퍼"""
+    async def _get_kr_durs_async(cls, ingr_name):
+        """비동기 문맥에서 DB 호출을 위한 헬퍼 (Robust Search with Lazy LLM)"""
         from drugs.models import DurMaster
+        from django.db.models import Q
         
-        # 매핑 적용 (수동 매핑은 제거하고 FDA 데이터에 의존)
-        # upper_name = ingr_name.upper()
-        # target_name = cls.MANUAL_INGR_MAPPING.get(upper_name, upper_name)
+        if not ingr_name: return []
         
-        clean_name = ingr_name.split()[0].lower() # target_name -> ingr_name
-        if not clean_name: return []
+        # 1. Cleaning
+        target_name = ingr_name.strip().lower()
+        if not target_name: return []
+
+        # 2. Synonym Mapping (Common miss-matches)
+        SYNONYMS = {
+            "acetaminophen": ["acetaminophen", "paracetamol"],
+            "paracetamol": ["acetaminophen", "paracetamol"],
+            "aspirin": ["aspirin", "acetylsalicylic acid"],
+            "ibuprofen": ["ibuprofen"],
+            "naproxen": ["naproxen"],
+            "diphenhydramine": ["diphenhydramine"],
+        }
         
-        durs = DurMaster.objects.filter(ingr_eng_name__icontains=clean_name)
-        return [{
-            "type": d.dur_type,
-            "kor_name": d.ingr_kor_name,
-            "warning": d.prohbt_content or d.remark
-        } for d in durs]
+        search_candidates = set()
+        search_candidates.add(target_name)
+        
+        # Add synonyms
+        if target_name in SYNONYMS:
+            search_candidates.update(SYNONYMS[target_name])
+            
+        # Add first word
+        first_word = target_name.split()[0]
+        if len(first_word) > 3:
+            search_candidates.add(first_word)
+
+        print(f"[DEBUG] Search Candidates for '{ingr_name}': {search_candidates}")
+
+        # 3. Construct Query
+        q_obj = Q()
+        for cand in search_candidates:
+            q_obj |= Q(ingr_eng_name__icontains=cand)
+            q_obj |= Q(ingr_kor_name__icontains=cand)
+
+        # Sync code to create queryset is fine
+        durs_qs = DurMaster.objects.filter(q_obj).distinct()
+        
+        # Async execution of DB query
+        durs_list = await sync_to_async(list)(durs_qs)
+        
+        # [Lazy LLM Expansion]
+        if not durs_list and len(target_name) > 2:
+            from services.ai_service import AIService
+            print(f"[DEBUG] No direct DUR match for '{target_name}'. Requesting AI synonyms...")
+            
+            # This is now valid because we are in an async def
+            ai_synonyms = await AIService.get_synonyms(ingr_name)
+            print(f"[DEBUG] AI Synonyms: {ai_synonyms}")
+            
+            if ai_synonyms:
+                q_retry = Q()
+                for syn in ai_synonyms:
+                    q_retry |= Q(ingr_eng_name__icontains=syn)
+                    q_retry |= Q(ingr_kor_name__icontains=syn)
+                
+                durs_retry_qs = DurMaster.objects.filter(q_retry).distinct()
+                durs_list = await sync_to_async(list)(durs_retry_qs)
+
+
+
+        # [Dedup & Translation]
+        DUR_TYPE_KOR_MAP = {
+            "PREGNANCY": "임부 금기/주의",
+            "COMBINED": "병용 금기",
+            "AGE_SPECIFIC": "연령 금기",
+            "ELDERLY": "노인 주의",
+            "MAX_CAPACITY": "용량 주의",
+            "MAX_DURATION": "투여 기간 주의",
+            "EFFICACY_DUPLICATE": "효능 중복 주의",
+            "DOSAGE_DUPLICATE": "용법 주의",
+            "ADMINISTRATION_DUPLICATE": "투여 경로 주의",
+            "LACTATION": "수유부 주의",
+            "WEIGHT": "체중 주의",
+            "KIDNEY": "신장 질환 주의",
+            "LIVER": "간 질환 주의",
+            "G6PD": "특정 효소 결핍 주의",
+            "PEDIATRIC": "소아 주의",
+        }
+
+        # Group by type to remove duplicates and combine messages
+        grouped_results = {}
+        
+        for d in durs_list:
+            d_type = d.dur_type
+            kor_type = DUR_TYPE_KOR_MAP.get(d_type, d_type) # Fallback to original if not mapped
+            content = (d.prohbt_content or d.remark or "").strip()
+            
+            if not content: continue
+            
+            if kor_type not in grouped_results:
+                grouped_results[kor_type] = {
+                    "type": kor_type, # Use localized name
+                    "original_type": d_type,
+                    "kor_name": d.ingr_kor_name,
+                    "warnings": set() # Use set for dedup content
+                }
+            
+            grouped_results[kor_type]["warnings"].add(content)
+
+        results = []
+        for key, val in grouped_results.items():
+            # Combine unique warnings into one string
+            combined_warning = "\n".join(sorted(list(val["warnings"])))
+            results.append({
+                "type": val["type"],
+                "kor_name": val["kor_name"],
+                "warning": combined_warning
+            })
+            
+        print(f"[DEBUG] Found {len(results)} DUR categories (after dedup/translation).")
+        return results
+
+
 
     @staticmethod
     @sync_to_async
-    def get_dur_by_english_ingr_list(ingr_list):
-        """(Legacy) 영어 성분명 리스트를 한국 DUR 데이터와 매핑"""
-        from drugs.models import DurMaster
-        if not ingr_list:
-            return []
-
-        query = Q()
-        for eng_name in ingr_list:
-            clean_name = eng_name.split()[0].lower()
-            if clean_name:
-                query |= Q(ingr_eng_name__icontains=clean_name)
+    def search_eyak_drug(keyword: str):
+        """
+        DrugPermitInfo에서 제품명 또는 업체명으로 약품 검색 (사용자 확인: 데이터 존재함)
+        """
+        from drugs.models import DrugPermitInfo
         
-        durs = list(DurMaster.objects.filter(query))
+        # 검색어 공백 제거
+        keyword = keyword.strip()
+
+        # 최대 100개까지 반환 (스크롤 고려)
+        if keyword:
+            results = DrugPermitInfo.objects.filter(
+                Q(item_name__icontains=keyword) | 
+                Q(entp_name__icontains=keyword)
+            )[:100]
+        else:
+            # 검색어 없으면 상위 100개 반환 (전체 보기)
+            results = DrugPermitInfo.objects.all()[:100]
+
         return [{
-            "ingredient": d.ingr_kor_name,
-            "type": d.dur_type,
-            "warning": d.prohbt_content or d.remark
-        } for d in durs]
+            "item_seq": item.item_seq,
+            "item_name": item.item_name,
+            "entp_name": item.entp_name
+        } for item in results]

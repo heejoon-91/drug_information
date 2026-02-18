@@ -28,10 +28,16 @@ from fastapi.templating import Jinja2Templates
 # 2. 서비스 로드
 from services.drug_service import DrugService
 from services.ai_service import AIService
+from services.auth_service import get_current_user_optional
+from services.user_service import UserService
+from routers import auth_router, user_router, drug_router
 # 3. LangGraph 로드
 from graph_agent.builder import build_graph
 
 app = FastAPI(title="Global Drug Safety Intelligence")
+app.include_router(auth_router.router)
+app.include_router(user_router.router)
+app.include_router(drug_router.router)
 templates = Jinja2Templates(directory=os.path.join(current_dir, "templates"))
 router = APIRouter()
 
@@ -54,8 +60,13 @@ async def startup_event():
     logger.info("LangGraph workflow initialized.")
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    token = request.cookies.get("access_token")
+    if token and token.startswith("Bearer "):
+        token = token.split(" ")[1]
+    user = await get_current_user_optional(token)
+    return templates.TemplateResponse("index.html", {"request": request, "user": user})
 
 @app.get("/web-search/{drug_name}", response_class=HTMLResponse)
 async def product_search(request: Request, drug_name: str):
@@ -88,7 +99,24 @@ async def smart_search(request: Request, q: str):
     logger.info(f"LangGraph User Query: {q}")
 
     # Run LangGraph Workflow
-    inputs = {"query": q}
+    user_profile_data = None
+    try:
+        token = request.cookies.get("access_token")
+        if token and token.startswith("Bearer "):
+            token = token.split(" ")[1]
+        user = await get_current_user_optional(token)
+        if user:
+            profile = await UserService.get_profile(user)
+            if profile:
+                user_profile_data = {
+                    "current_medications": profile.current_medications,
+                    "allergies": profile.allergies,
+                    "chronic_diseases": profile.chronic_diseases
+                }
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {e}")
+
+    inputs = {"query": q, "user_profile": user_profile_data}
     try:
         result = await app.state.graph.ainvoke(inputs)
     except Exception as e:

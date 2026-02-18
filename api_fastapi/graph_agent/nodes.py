@@ -37,6 +37,14 @@ async def retrieve_fda_node(state: AgentState) -> AgentState:
         # Symptom search logic
         eng_kw = [keyword] if keyword and keyword != "none" else ["pain"]
         fda_ingrs = await DrugService.get_ingrs_from_fda_by_symptoms(eng_kw)
+        
+        # [Agentic Fallback]
+        # FDA 검색 결과가 없으면, AI에게 성분 추천을 요청하여 DUR 검사를 진행할 수 있도록 함
+        if not fda_ingrs:
+            logger.info(f"FDA search failed for '{keyword}'. Requesting AI recommendation.")
+            fda_ingrs = await AIService.recommend_ingredients_for_symptom(keyword or query)
+            logger.info(f"AI recommended ingredients: {fda_ingrs}")
+            
         fda_data = fda_ingrs # Store ingredients list
         
     elif category == "product_request":
@@ -76,18 +84,23 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
     dur_data = state["dur_data"]
     
     if not dur_data:
-        return {"final_answer": "해당 증상에 대한 의약품 정보를 찾을 수 없습니다."}
+        # Fallback to general AI answer if DB search yields no results
+        # This handles cases like "What medicine for cold?" where DB might not match but AI knows general info.
+        fallback_query = f"The user asked about '{symptom}' but I couldn't find specific drugs in the FDA/DUR database. Please provide general medical advice or common over-the-counter ingredients for this symptom. (User query: {state['query']})"
+        answer = await AIService.generate_general_answer(fallback_query)
+        prefix = "해당 증상에 대한 FDA/DUR 기반의 정확한 의약품 정보는 찾을 수 없었지만, 일반적인 정보를 안내해 드립니다.\n\n"
+        return {"final_answer": prefix + answer}
         
     # AI 답변 생성을 위한 요약 데이터 생성
     summary_for_ai = []
     for item in dur_data:
         summary = f"Ingredient: {item['ingredient']}\n"
-        summary += f"FDA Warning: {item['fda_warning'][:200] if item['fda_warning'] else 'None'}\n"
+        summary += f"FDA Warning: {item['fda_warning'] if item['fda_warning'] else 'None'}\n"
         kr_warnings = [f"{d['type']}: {d['warning']}" for d in item['kr_durs']]
         summary += f"KR DUR: {', '.join(kr_warnings)}"
         summary_for_ai.append(summary)
     
-    answer = await AIService.generate_symptom_answer(symptom, "\n---\n".join(summary_for_ai))
+    answer = await AIService.generate_symptom_answer(symptom, "\n---\n".join(summary_for_ai), state.get("user_profile"))
     return {"final_answer": answer}
 
 async def generate_product_answer_node(state: AgentState) -> AgentState:

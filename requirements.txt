@@ -23,3 +23,6 @@ python-dotenv           # .env 파일에서 API 키/DB 비번 로드용
 # --- Utils ---
 openpyxl                # 엑셀(.xlsx) 파일 처리용
 cryptography            # 보안 및 암호화 관련
+python-jose[cryptography] # JWT 토큰 생성 및 검증
+passlib[bcrypt]         # 비밀번호 해싱
+python-multipart        # 로그인 폼 데이터 처리
