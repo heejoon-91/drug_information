@@ -8,13 +8,6 @@ class EYakInfo(models.Model):
     item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
     
-    # [중요] 전문/일반 구분 (제품 허가 목록의 SPCLTY_PBLC 또는 ETC_OTC_CODE)
-    etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
-    
-    # [핵심] 주성분 정보 (제품 주성분 상세정보 API에서 추출한 성분명들을 콤마로 연결하여 저장)
-    # DUR 성분 기반 검색과 e약은요 제품 검색을 잇는 가교 역할을 합니다.
-    main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분명 통합")
-    
     # 상세 가이드 (e약은요 및 상세정보 API 데이터)
     efficacy = models.TextField(blank=True, null=True, verbose_name="효능")
     use_method = models.TextField(blank=True, null=True, verbose_name="사용법")
@@ -33,8 +26,37 @@ class EYakInfo(models.Model):
 
     class Meta:
         db_table = 'eyak_info'
-        verbose_name = "의약품 상세 정보"
-        verbose_name_plural = "의약품 상세 정보 목록"
+        verbose_name = "e약은요 상세 정보"
+        verbose_name_plural = "e약은요 상세 정보 목록"
+
+# 4. 통합 의약품 정보 (e약은요 + 제품허가정보)
+class UnifiedDrugInfo(models.Model):
+    # 기본 정보 (e약은요 및 제품허가정보 공통)
+    item_seq = models.CharField(max_length=20, primary_key=True, verbose_name="품목기준코드")
+    item_name = models.TextField(verbose_name="제품명", db_index=True)
+    item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
+    entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
+    
+    # 허가 정보 (DrugPermitInfo에서 획득)
+    etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
+    main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
+    
+    # 상세 가이드 (EYakInfo에서 획득)
+    efficacy = models.TextField(blank=True, null=True, verbose_name="효능")
+    use_method = models.TextField(blank=True, null=True, verbose_name="사용법")
+    precautions = models.TextField(blank=True, null=True, verbose_name="주의사항")
+    interaction = models.TextField(blank=True, null=True, verbose_name="상호작용")
+    side_effects = models.TextField(blank=True, null=True, verbose_name="부작용")
+    
+    # 메타 데이터
+    item_image = models.URLField(max_length=500, blank=True, null=True, verbose_name="제품이미지URL")
+    source_updated_at = models.DateField(null=True, blank=True, verbose_name="허가일/수정일")
+    last_synced_at = models.DateTimeField(auto_now=True, verbose_name="시스템동기화일")
+
+    class Meta:
+        db_table = 'unified_drug_info'
+        verbose_name = "통합 의약품 정보"
+        verbose_name_plural = "통합 의약품 정보 목록"
 
 # 1.5. 의약품 제품 허가 정보 (검색용)
 class DrugPermitInfo(models.Model):
@@ -44,8 +66,8 @@ class DrugPermitInfo(models.Model):
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
     main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
     etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
-    permit_date = models.DateField(null=True, blank=True, verbose_name="허가일자")
-    valid_term = models.TextField(blank=True, null=True, verbose_name="유효기한")
+    source_updated_at = models.DateField(null=True, blank=True, verbose_name="허가일자")
+    last_synced_at = models.DateTimeField(auto_now=True, verbose_name="시스템동기화일")
 
     class Meta:
         db_table = 'drug_permit_info'

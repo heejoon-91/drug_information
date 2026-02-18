@@ -29,10 +29,13 @@ Icon?
 
 ### 언어/프레임워크 공통 (Node.js, Python 등) ###
 node_modules/
-__pycache__/
 venv/
 .venv/
 dist/
 build/
 out/
 *.log
+
+### Django Migrations ###
+**/migrations/*.py
+!**/migrations/__init__.py

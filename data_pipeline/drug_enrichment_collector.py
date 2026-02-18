@@ -64,8 +64,7 @@ class DrugEnrichmentCollector:
                             'entp_name': item.get('ENTP_NAME'),
                             'etc_otcc_name': item.get('SPCLTY_PBLC'),
                             'main_ingr_name': item.get('ITEM_INGR_NAME'),
-                            'permit_date': self.format_date(item.get('ITEM_PERMIT_DATE')),
-                            'valid_term': item.get('VALID_TERM')
+                            'source_updated_at': self.format_date(item.get('ITEM_PERMIT_DATE'))
                         }
                     )
 
