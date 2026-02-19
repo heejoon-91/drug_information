@@ -5,7 +5,6 @@ class EYakInfo(models.Model):
     # 기본 정보 (제품 허가 목록 API 기반)
     item_seq = models.CharField(max_length=20, primary_key=True, verbose_name="품목기준코드")
     item_name = models.TextField(verbose_name="제품명") # db_index 제거
-    item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
     
     # 상세 가이드 (e약은요 및 상세정보 API 데이터)
@@ -34,7 +33,6 @@ class UnifiedDrugInfo(models.Model):
     # 기본 정보 (e약은요 및 제품허가정보 공통)
     item_seq = models.CharField(max_length=20, primary_key=True, verbose_name="품목기준코드")
     item_name = models.TextField(verbose_name="제품명", db_index=True)
-    item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
     
     # 허가 정보 (DrugPermitInfo에서 획득)

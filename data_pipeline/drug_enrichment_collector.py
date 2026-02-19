@@ -87,4 +87,4 @@ class DrugEnrichmentCollector:
 if __name__ == "__main__":
     collector = DrugEnrichmentCollector()
     # 11페이지부터 이어서 수집하려면 start_page=11 설정
-    collector.collect_all_basic_info(start_page=11)
+    collector.collect_all_basic_info(start_page=1)

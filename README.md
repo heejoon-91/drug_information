@@ -54,6 +54,12 @@ OPENAI_API_KEY=sk-proj-...
 # 공공데이터포털 DUR API 키 (데이터 수집용, Decoding된 키 입력 권장)
 KR_API_KEY=your_decoding_key_here
 
+# OpenFDA API 키 (미국 의약품 데이터용)
+OPENFDA_API_KEY=your_openfda_key_here
+
+# LangSmith API 키 (LangChain 모니터링용, 선택)
+LANGSMITH_API_KEY=your_langsmith_key_here
+
 # --- [선택] 데이터베이스 설정 (기본값: 로컬 MySQL) ---
 DB_NAME=drug_db
 DB_USER=root
@@ -61,8 +67,13 @@ DB_PASSWORD=your_password
 DB_HOST=127.0.0.1
 DB_PORT=3306
 
+# --- [필수] Supabase 설정 (데이터 동기화용) ---
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_anon_key
+
 # --- [선택] Django 시크릿 키 (배포 시 변경 필수) ---
-SECRET_KEY=django-insecure-...
+DJANGO_SECRET_KEY=django-insecure-...
+
 ```
 
 ### 4. 데이터베이스 구축 (Database Setup)
@@ -108,5 +119,6 @@ python api_fastapi/main.py
 더 자세한 내용은 아래 문서를 참고하세요.
 
 *   [📂 **프로젝트 구조 (Project Structure)**](./project_structure.md): 디렉토리 및 파일 역할 설명
+*   [🗄️ **DB 스키마 (Database Schema)**](./SCHEMA.md): 테이블 및 컬럼 상세 명세
 *   [⚙️ **설정 가이드 (Configuration Guide)**](./chatbot_config_guide.md): 챗봇 성격 및 파라미터 변경 방법
 *   [🔄 **데이터 흐름 (Data Flow)**](./chatbot_data_flow.md): 사용자 입력부터 답변까지의 처리 과정
