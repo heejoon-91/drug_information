@@ -1,84 +1,85 @@
 import os
 import sys
 import django
-from supabase import create_client, Client
-from tqdm import tqdm
-from datetime import date, datetime
 
-# Django Setup
+# 1. Django 환경 설정
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../backend_django')))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from drugs.models import DrugPermitInfo, DurMaster, UserProfile, EYakInfo, UnifiedDrugInfo
+from drugs.models import DurMaster
+from supabase import create_client, Client
 
-def get_supabase_client() -> Client:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    if not url or not key:
-        print("Error: SUPABASE_URL and SUPABASE_KEY must be set in .env")
-        sys.exit(1)
-    return create_client(url, key)
+# 2. Supabase 연결 설정
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
-def sync_model(client: Client, model, table_name, batch_size=1000):
-    print(f"Starting sync for {table_name}...")
-    
-    queryset = model.objects.all()
-    total_count = queryset.count()
-    
-    if total_count == 0:
-        print(f"No data found in {table_name}. Skipping.")
+def sync_data():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        print("Error: SUPABASE_URL 또는 SUPABASE_KEY 환경변수가 설정되지 않았습니다.")
         return
 
-    print(f"Found {total_count} records in {table_name}.")
-    
-    # Process in batches
-    objects = []
-    
-    # Using iterator to avoid memory issues with large datasets
-    for obj in tqdm(queryset.iterator(), total=total_count, desc=f"Syncing {table_name}"):
-        # Convert model instance to dict
-        data = {}
-        for field in model._meta.fields:
-            value = getattr(obj, field.name)
-            # Handle date/datetime serialization
-            if value is not None:
-                 if isinstance(value, (date, datetime)):
-                     data[field.name] = value.isoformat()
-                 else:
-                     data[field.name] = value
-        
-        objects.append(data)
-        
-        if len(objects) >= batch_size:
-            try:
-                # upsert: insert or update on conflict (usually primary key)
-                client.table(table_name).upsert(objects).execute()
-                objects = []
-            except Exception as e:
-                print(f"Error syncing batch to {table_name}: {e}")
-                # Optional: break or continue? continue for now
-    
-    # Sync remaining
-    if objects:
-        try:
-            client.table(table_name).upsert(objects).execute()
-        except Exception as e:
-            print(f"Error syncing final batch to {table_name}: {e}")
+    print("--- [START] Supabase 데이터 동기화 시작 ---")
 
-    print(f"Finished sync for {table_name}.\n")
+    # 3. 로컬 데이터 조회
+    print("1. 로컬 DB에서 데이터 조회 중...")
+    local_data = list(DurMaster.objects.all().values())
+    total_count = len(local_data)
+    print(f"   - 총 {total_count}건의 데이터를 발견했습니다.")
+
+    if total_count == 0:
+        print("   - 동기화할 데이터가 없습니다.")
+        return
+
+    # 4. Supabase 클라이언트 연결
+    print("2. Supabase 연결 및 데이터 삽입 시작...")
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    # 5. 배치 처리 (한 번에 500건씩)
+    batch_size = 500
+    for i in range(0, total_count, batch_size):
+        batch = local_data[i:i + batch_size]
+
+        rows = []
+        for item in batch:
+            rows.append({
+                'dur_seq':                item.get('dur_seq'),
+                'dur_type':               item.get('dur_type'),
+                'type_name':              item.get('type_name'),
+                'ingr_code':              item.get('ingr_code'),
+                'ingr_kor_name':          item.get('ingr_kor_name'),
+                'ingr_eng_name':          item.get('ingr_eng_name'),
+                'form_name':              item.get('form_name'),
+                'mix_type':               item.get('mix_type'),
+                'mix_ingr':               item.get('mix_ingr'),
+                'ori_ingr':               item.get('ori_ingr'),
+                'mixture_ingr_code':      item.get('mixture_ingr_code'),
+                'mixture_ingr_kor_name':  item.get('mixture_ingr_kor_name'),
+                'mixture_ingr_eng_name':  item.get('mixture_ingr_eng_name'),
+                'mixture_mix_type':       item.get('mixture_mix_type'),
+                'mixture_class':          item.get('mixture_class'),
+                'mixture_ori':            item.get('mixture_ori'),
+                'grade':                  item.get('grade'),
+                'max_qty':                item.get('max_qty'),
+                'max_dosage_term':        item.get('max_dosage_term'),
+                'age_base':               item.get('age_base'),
+                'effect_code':            item.get('effect_code'),
+                'sers_name':              item.get('sers_name'),
+                'critical_value':         item.get('critical_value'),
+                'prohbt_content':         item.get('prohbt_content'),
+                'remark':                 item.get('remark'),
+                'class_name':             item.get('class_name'),
+                'notification_date':      str(item.get('notification_date')) if item.get('notification_date') else None,
+                'del_yn':                 item.get('del_yn'),
+            })
+
+        try:
+            supabase.table('dur_master').insert(rows).execute()
+            print(f"   - {min(i + batch_size, total_count)}/{total_count}건 저장 완료...")
+        except Exception as e:
+            print(f"   ! 배치 저장 실패 ({i}~{i+batch_size}): {e}")
+
+    print("--- [FINISH] 동기화 완료 ---")
 
 if __name__ == "__main__":
-    supabase = get_supabase_client()
-    
-    # Map Models to Supabase Tables
-    # Ensure table names in Supabase match these
-    sync_tasks = [
-        # (DrugPermitInfo, "drug_permit_info"),
-        # (DurMaster, "dur_master"),
-        # (EYakInfo, "eyak_info"),
-        (UnifiedDrugInfo, "unified_drug_info"),
-    ]
-    
-    for model, table_name in sync_tasks:
-        sync_model(supabase, model, table_name)
+    sync_data()

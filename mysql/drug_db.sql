@@ -1,4 +1,4 @@
--- Active: 1771050190550@@127.0.0.1@3306@drug_db
+-- Active: 1770790775308@@127.0.0.1@3306@mysql
 -- 1. 데이터베이스 생성
 DROP DATABASE IF EXISTS drug_db;
 CREATE DATABASE drug_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

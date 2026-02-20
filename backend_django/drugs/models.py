@@ -14,10 +14,6 @@ class EYakInfo(models.Model):
     interaction = models.TextField(blank=True, null=True, verbose_name="상호작용")
     side_effects = models.TextField(blank=True, null=True, verbose_name="부작용")
     
-    # 문서 링크 (제품 허가 상세정보 API의 PDF 다운로드 링크 등)
-    # 텍스트 데이터가 부족할 경우 LLM이 직접 참고할 수 있는 리소스로 활용합니다.
-    # ee_doc_url, ud_doc_url, nb_doc_url 필드는 사용하지 않으므로 제거함
-    
     # 메타 데이터
     item_image = models.URLField(max_length=500, blank=True, null=True, verbose_name="제품이미지URL")
     source_updated_at = models.DateField(null=True, blank=True, verbose_name="식약처수정일")
@@ -75,20 +71,54 @@ class DrugPermitInfo(models.Model):
 
 # 2. DUR 통합 마스터 테이블 (기존 유지)
 class DurMaster(models.Model):
+    # [기본 식별자 및 메타데이터]
+    dur_seq = models.CharField(max_length=50, blank=True, null=True, verbose_name="DUR일련번호")
     dur_type = models.CharField(max_length=50, db_index=True, verbose_name="금기유형")
+    type_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="금기유형명")
+    
+    # [핵심 성분 정보]
     ingr_code = models.CharField(max_length=20, db_index=True, verbose_name="성분코드")
-    ingr_eng_name = models.CharField(max_length=255, db_index=True, verbose_name="성분명(영문)")
     ingr_kor_name = models.CharField(max_length=255, verbose_name="성분명(국문)")
-    critical_value = models.CharField(max_length=255, blank=True, null=True, verbose_name="핵심주의값")
+    ingr_eng_name = models.CharField(max_length=255, blank=True, null=True, db_index=True, verbose_name="성분명(영문)")
+    
+    # [제형 및 원문 정보]
+    # form_name: API 데이터 중 매우 긴 문자열이 포함될 수 있어 TextField로 변경
+    form_name = models.TextField(blank=True, null=True, verbose_name="제형") 
+    mix_type = models.CharField(max_length=50, blank=True, null=True, verbose_name="단일/복합")
+    mix_ingr = models.TextField(blank=True, null=True, verbose_name="복합성분정보") # MIX_INGR / MIX
+    ori_ingr = models.TextField(blank=True, null=True, verbose_name="원문성분정보") # ORI_INGR / ORI
+    
+    # [병용금기 특화 필드]
+    mixture_ingr_code = models.CharField(max_length=20, blank=True, null=True, verbose_name="병용금기성분코드")
+    mixture_ingr_kor_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="병용금기성분명(국문)")
+    mixture_ingr_eng_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="병용금기성분명(영문)")
+    mixture_mix_type = models.CharField(max_length=50, blank=True, null=True, verbose_name="병용단일/복합")
+    mixture_class = models.CharField(max_length=255, blank=True, null=True, verbose_name="병용약효분류")
+    mixture_ori = models.TextField(blank=True, null=True, verbose_name="병용원문정보") # MIXTURE_ORI
+    
+    # [임부/용량/기간/연령/효능중복 특화 값]
+    grade = models.CharField(max_length=50, blank=True, null=True, verbose_name="금기등급") # 임부
+    max_qty = models.CharField(max_length=100, blank=True, null=True, verbose_name="최대투여량") # 용량
+    max_dosage_term = models.CharField(max_length=100, blank=True, null=True, verbose_name="최대투여기간") # 기간
+    age_base = models.CharField(max_length=100, blank=True, null=True, verbose_name="기준연령") # 연령금기
+    effect_code = models.CharField(max_length=50, blank=True, null=True, verbose_name="효능코드") # 효능중복
+    sers_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="효능군명") # 효능중복
+    
+    # [공통 상세 정보]
+    critical_value = models.CharField(max_length=255, blank=True, null=True, verbose_name="핵심주의값(통합)")
     prohbt_content = models.TextField(blank=True, null=True, verbose_name="금기내용")
     remark = models.TextField(blank=True, null=True, verbose_name="비고")
     class_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="효능군/계열")
     notification_date = models.DateField(null=True, blank=True, verbose_name="공고일자")
+    del_yn = models.CharField(max_length=10, default="정상", verbose_name="삭제여부")
+    
     last_synced_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'dur_master'
-        unique_together = ('dur_type', 'ingr_code', 'critical_value')
+        indexes = [
+            models.Index(fields=['dur_type', 'ingr_code']),
+        ]
 
 # 3. 사용자 건강 정보 프로필
 from django.contrib.auth.models import User
