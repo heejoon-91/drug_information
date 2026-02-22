@@ -73,12 +73,12 @@ class DrugPermitInfo(models.Model):
 class DurMaster(models.Model):
     # [기본 식별자 및 메타데이터]
     dur_seq = models.CharField(max_length=50, blank=True, null=True, verbose_name="DUR일련번호")
-    dur_type = models.CharField(max_length=50, db_index=True, verbose_name="금기유형")
+    dur_type = models.CharField(max_length=50, db_index=True, blank=True, null=True, verbose_name="금기유형")
     type_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="금기유형명")
     
     # [핵심 성분 정보]
-    ingr_code = models.CharField(max_length=20, db_index=True, verbose_name="성분코드")
-    ingr_kor_name = models.CharField(max_length=255, verbose_name="성분명(국문)")
+    ingr_code = models.CharField(max_length=20, db_index=True, blank=True, null=True, verbose_name="성분코드")
+    ingr_kor_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="성분명(국문)")
     ingr_eng_name = models.CharField(max_length=255, blank=True, null=True, db_index=True, verbose_name="성분명(영문)")
     
     # [제형 및 원문 정보]
