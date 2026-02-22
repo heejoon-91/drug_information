@@ -320,3 +320,20 @@ class DrugService:
             "item_name": item.item_name,
             "entp_name": item.entp_name
         } for item in results]
+
+    @classmethod
+    async def get_us_mapping(cls, ingredient_name: str):
+        url = f"https://api.fda.gov/drug/label.json?search=openfda.substance_name:\"{ingredient_name}\"&limit=3"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                return {"error": "미국 내 해당 성분 의약품을 찾을 수 없습니다."}
+            
+            data = response.json()
+            return [
+                {
+                    "brand_name": res.get("openfda", {}).get("brand_name", ["N/A"])[0],
+                    "dosage_form": res.get("openfda", {}).get("dosage_form", ["N/A"])[0],
+                    "warnings": res.get("warnings", ["N/A"])[0][:200]
+                } for res in data.get("results", [])
+            ]

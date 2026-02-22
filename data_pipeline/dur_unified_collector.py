@@ -121,6 +121,8 @@ class DurUnifiedCollector:
                         defaults = {
                             # 기본 식별자
                             'dur_seq': item.get('DUR_SEQ'),
+                            'dur_type': config['type'],  # [FIX] dur_type 누락 방지
+                            'ingr_code': ingr_code,      # [FIX] ingr_code 누락 방지
                             'type_name': item.get('TYPE_NAME'),
                             'form_name': item.get('FORM_NAME'),
                             'mix_type': item.get('MIX_TYPE'),

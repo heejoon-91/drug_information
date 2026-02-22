@@ -41,6 +41,7 @@ from fastapi.templating import Jinja2Templates
 from services.ai_service import AIService
 from services.auth_service import get_current_user_optional
 from services.user_service import UserService
+from services.map_service import MapService
 from routers import auth_router, user_router, drug_router
 # 3. LangGraph 로드 (Uses Patched DrugService naturally)
 from graph_agent.builder import build_graph
@@ -102,7 +103,8 @@ async def product_search(request: Request, drug_name: str):
         "ingredients": fda_result['active_ingredients'],
         "us_guideline": fda_result, 
         "kr_dur": kr_dur, 
-        "dur_count": len(kr_dur)
+        "dur_count": len(kr_dur),
+        "maps_key": os.getenv("GOOGLE_MAPS_API_KEY")
     })
 
 @app.get("/smart-search", response_class=HTMLResponse)
@@ -147,7 +149,8 @@ async def smart_search(request: Request, q: str):
             "request": request, 
             "symptom": q, 
             "answer": final_answer,
-            "dur_details": result.get("dur_data", [])
+            "dur_details": result.get("dur_data", []),
+            "maps_key": os.getenv("GOOGLE_MAPS_API_KEY")
         })
 
     elif category == "product_request":
@@ -165,7 +168,8 @@ async def smart_search(request: Request, q: str):
             "ingredients": fda.get("active_ingredients"),
             "us_guideline": fda,
             "kr_dur": dur,
-            "dur_count": len(dur)
+            "dur_count": len(dur),
+            "maps_key": os.getenv("GOOGLE_MAPS_API_KEY")
         })
         
     elif category == "general_medical":
@@ -173,7 +177,8 @@ async def smart_search(request: Request, q: str):
             "request": request,
             "symptom": q,
             "answer": final_answer,
-            "dur_details": [] 
+            "dur_details": [],
+            "maps_key": os.getenv("GOOGLE_MAPS_API_KEY")
         })
     
     else: 
@@ -205,6 +210,15 @@ async def global_drug_search(drug_name: str):
             "dur_details": kr_dur_result
         }
     }
+
+@app.get("/api/pharmacies")
+async def get_nearby_pharmacies(lat: float, lng: float):
+    try:
+        results = await MapService.find_nearby_pharmacies(lat, lng)
+        return {"status": "success", "results": results, "api_key_loaded": bool(os.getenv("GOOGLE_MAPS_API_KEY"))}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc(), "api_key_loaded": bool(os.getenv("GOOGLE_MAPS_API_KEY"))}
 
 app.include_router(router)
 
