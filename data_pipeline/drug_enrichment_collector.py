@@ -26,12 +26,17 @@ class DrugEnrichmentCollector:
             except: return None
         return None
 
-    def collect_all_basic_info(self, start_page=1):
-        """데이터가 끝날 때까지 모든 제품 목록 수집"""
+    def collect_all_basic_info(self, start_page=1, max_pages=None):
+        """데이터가 끝날 때까지 모든 제품 목록 수집 (max_pages로 제한 가능)"""
         print(f"--- [START] 전수 데이터 수집 시작 (시작 페이지: {start_page}) ---")
         page = start_page
         
         while True:
+            # 최대 페이지 제한 확인
+            if max_pages and page >= start_page + max_pages:
+                print(f"   - 설정된 최대 수집 페이지({max_pages})에 도달하여 수집을 종료합니다.")
+                break
+                
             params = {
                 'serviceKey': self.service_key,
                 'pageNo': page,
@@ -40,8 +45,8 @@ class DrugEnrichmentCollector:
             }
             
             try:
-                # 1. 제품 허가 목록 API 호출
-                url = f"{self.base_url}/getDrugPrdtPrmsnInq07"
+                # 1. 제품 허가 상세 목록 API 호출 (단일 API로 원료성분까지 수집)
+                url = f"{self.base_url}/getDrugPrdtPrmsnDtlInq06"
                 response = requests.get(url, params=params, timeout=20)
                 data = response.json()
                 
@@ -54,16 +59,17 @@ class DrugEnrichmentCollector:
                     break
 
                 for item in items:
-                    # [데이터 매핑] 대문자 키 대응
+                    # [데이터 매핑] 대문자 키 대응 (상세 API 스펙 반영)
                     item_seq = item.get('ITEM_SEQ')
                     DrugPermitInfo.objects.update_or_create(
                         item_seq=item_seq,
                         defaults={
                             'item_name': item.get('ITEM_NAME'),
-                            'item_eng_name': item.get('ITEM_ENG_NAME'),
+                            'item_eng_name': item.get('ITEM_ENG_NAME', ''), # 영문명 없을 경우 빈 문자열
                             'entp_name': item.get('ENTP_NAME'),
-                            'etc_otcc_name': item.get('SPCLTY_PBLC'),
-                            'main_ingr_name': item.get('ITEM_INGR_NAME'),
+                            'etc_otcc_name': item.get('MAKE_MATERIAL_FLAG'), # 전문/일반 구분
+                            'main_ingr_eng': item.get('MAIN_INGR_ENG'), # 사용자 요청: 주성분 영문명
+                            'main_ingr_kor': item.get('MAIN_ITEM_INGR'), # 사용자 요청: 원료성분 한글
                             'source_updated_at': self.format_date(item.get('ITEM_PERMIT_DATE'))
                         }
                     )
@@ -86,5 +92,4 @@ class DrugEnrichmentCollector:
 
 if __name__ == "__main__":
     collector = DrugEnrichmentCollector()
-    # 11페이지부터 이어서 수집하려면 start_page=11 설정
     collector.collect_all_basic_info(start_page=1)

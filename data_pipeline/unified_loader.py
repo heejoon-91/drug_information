@@ -30,7 +30,6 @@ class UnifiedLoader:
             # 2. 통합 데이터 구성
             defaults = {
                 'item_name': eyak.item_name,
-                'item_eng_name': eyak.item_eng_name,
                 'entp_name': eyak.entp_name,
                 'efficacy': eyak.efficacy,
                 'use_method': eyak.use_method,
@@ -40,14 +39,16 @@ class UnifiedLoader:
                 'item_image': eyak.item_image,
                 # Default None fields
                 'etc_otcc_name': None,
-                'main_ingr_name': None,
+                'main_ingr_eng': None,
+                'main_ingr_kor': None,
                 'source_updated_at': None
             }
             
             # 허가정보가 있으면 덮어쓰기
             if permit_info:
                 defaults['etc_otcc_name'] = permit_info.etc_otcc_name
-                defaults['main_ingr_name'] = permit_info.main_ingr_name
+                defaults['main_ingr_eng'] = permit_info.main_ingr_eng
+                defaults['main_ingr_kor'] = permit_info.main_ingr_kor
                 defaults['source_updated_at'] = permit_info.source_updated_at # 허가일/수정일
             
             # 3. UnifiedDrugInfo 저장/업데이트

@@ -1,0 +1,77 @@
+### 의약품 제품 허가 목록 API (DrugPrdtPrmsnInfoService07)
+
+{
+"header": {
+"resultCode": "00",
+"resultMsg": "NORMAL SERVICE."
+},
+"body": {
+"pageNo": 1,
+"totalCount": 44038,
+"numOfRows": 1,
+"items": [
+{
+"ITEM_SEQ": "195500005",
+"ITEM_NAME": "중외5%포도당생리식염액(수출명:5%DextroseinnormalsalineInj.)",
+"ITEM_ENG_NAME": "Choongwae 5% Dextrose In Normal Saline Inj.",
+"ENTP_NAME": "제이더블유중외제약(주)",
+"ENTP_ENG_NAME": "JW Pharmaceutical",
+"ENTP_SEQ": "19550004",
+"ENTP_NO": "1302",
+"ITEM_PERMIT_DATE": "19550412",
+"INDUTY": "의약품",
+"PRDLST_STDR_CODE": "195500005",
+"SPCLTY_PBLC": "전문의약품",
+"PRDUCT_TYPE": "[03310]혈액대용제",
+"PRDUCT_PRMISN_NO": "792",
+"ITEM_INGR_NAME": "Glucose/Sodium Chloride",
+"ITEM_INGR_CNT": "2",
+"BIG_PRDT_IMG_URL": "",
+"PERMIT_KIND_CODE": "신고",
+"CANCEL_DATE": null,
+"CANCEL_NAME": "정상",
+"EDI_CODE": "644902212,644902220",
+"BIZRNO": "1188102477"
+}
+]
+}
+}
+
+example
+
+{
+"header": {
+"resultCode": "string",
+"resultMsg": "string"
+},
+"body": {
+"numOfRows": 0,
+"pageNo": 0,
+"totalCount": 0,
+"items": [
+{
+"ITEM_SEQ": "string",
+"ITEM_NAME": "string",
+"ITEM_ENG_NAME": "string",
+"ENTP_NAME": "string",
+"ENTP_ENG_NAME": "string",
+"ENTP_SEQ": "string",
+"ENTP_NO": "string",
+"ITEM_PERMIT_DATE": "string",
+"INDUTY": "string",
+"PRDLST_STDR_CODE": "string",
+"SPCLTY_PBLC": "string",
+"PRDUCT_TYPE": "string",
+"PRDUCT_PRMISN_NO": "string",
+"ITEM_INGR_NAME": "string",
+"ITEM_INGR_CNT": "string",
+"BIG_PRDT_IMG_URL": "string",
+"PERMIT_KIND_CODE": "string",
+"CANCEL_DATE": "string",
+"CANCEL_NAME": "string",
+"EDI_CODE": "string",
+"BIZRNO": "string"
+}
+]
+}
+}

@@ -33,7 +33,8 @@ class UnifiedDrugInfo(models.Model):
     
     # 허가 정보 (DrugPermitInfo에서 획득)
     etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
-    main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
+    main_ingr_eng = models.TextField(blank=True, null=True, verbose_name="주성분(영문)")
+    main_ingr_kor = models.TextField(blank=True, null=True, verbose_name="주성분(한글)")
     
     # 상세 가이드 (EYakInfo에서 획득)
     efficacy = models.TextField(blank=True, null=True, verbose_name="효능")
@@ -58,7 +59,8 @@ class DrugPermitInfo(models.Model):
     item_name = models.TextField(verbose_name="제품명")
     item_eng_name = models.TextField(blank=True, null=True, verbose_name="제품명(영문)")
     entp_name = models.CharField(max_length=255, blank=True, null=True, verbose_name="업체명")
-    main_ingr_name = models.TextField(blank=True, null=True, verbose_name="주성분")
+    main_ingr_eng = models.TextField(blank=True, null=True, verbose_name="주성분(영문)")
+    main_ingr_kor = models.TextField(blank=True, null=True, verbose_name="주성분(한글)")
     etc_otcc_name = models.CharField(max_length=50, blank=True, null=True, verbose_name="전문/일반")
     source_updated_at = models.DateField(null=True, blank=True, verbose_name="허가일자")
     last_synced_at = models.DateTimeField(auto_now=True, verbose_name="시스템동기화일")
