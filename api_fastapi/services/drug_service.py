@@ -2,6 +2,7 @@ import httpx
 from asgiref.sync import sync_to_async
 from django.db.models import Q
 import asyncio
+import re
 
 class DrugService:
     FDA_BASE_URL = "https://api.fda.gov/drug/label.json"
@@ -328,7 +329,6 @@ class DrugService:
             response = await client.get(url)
             if response.status_code != 200:
                 return {"error": "미국 내 해당 성분 의약품을 찾을 수 없습니다."}
-            
             data = response.json()
             return [
                 {
@@ -337,3 +337,38 @@ class DrugService:
                     "warnings": res.get("warnings", ["N/A"])[0][:200]
                 } for res in data.get("results", [])
             ]
+
+    @classmethod
+    def compare_dosage_and_warn(cls, fda_active_ingredient_text: str, kr_dosage_mg: float) -> dict:
+        """
+        FDA의 active_ingredient 텍스트에서 mg 단위를 추출하여 한국 처방량과 비교
+        fda_active_ingredient_text 예: "ACETAMINOPHEN 500mg" 또는 "Ibuprofen 200 mg"
+        kr_dosage_mg 예: 300.0 (한국 기준 함량)
+        """
+        warning_msg = None
+        us_dosage_mg = None
+        
+        # 정규식을 이용해 mg 수치 추출 (예: 500 mg, 500.0mg 등)
+        match = re.search(r'(\d+(?:\.\d+)?)\s*mg', fda_active_ingredient_text, re.IGNORECASE)
+        if match:
+            try:
+                us_dosage_mg = float(match.group(1))
+            except ValueError:
+                pass
+                
+        if us_dosage_mg is not None and kr_dosage_mg > 0:
+            diff_ratio = us_dosage_mg / kr_dosage_mg
+            if diff_ratio >= 1.5:
+                warning_msg = f"주의: 미국 제품의 함량({us_dosage_mg}mg)이 한국 기준({kr_dosage_mg}mg)보다 1.5배 이상 높습니다. 복용 전 약사와 상담하세요."
+            elif diff_ratio <= 0.5:
+                warning_msg = f"주의: 미국 제품의 함량({us_dosage_mg}mg)이 한국 기준({kr_dosage_mg}mg)보다 0.5배 이하로 낮아 권장 효과에 미달할 수 있습니다."
+            else:
+                warning_msg = f"미국 제품의 함량({us_dosage_mg}mg)은 한국 처방 기준({kr_dosage_mg}mg)과 유사한 수준입니다."
+        else:
+            warning_msg = "함량(mg) 정보를 명확히 추출하지 못했거나 기준량이 입력되지 않아 비교할 수 없습니다. 제조사 라벨을 반드시 확인하세요."
+            
+        return {
+            "us_dosage_mg": us_dosage_mg,
+            "kr_dosage_mg": kr_dosage_mg,
+            "warning": warning_msg
+        }

@@ -102,7 +102,7 @@ class SupabaseService:
         if not ingr_name: return []
         
         # Clean
-        target_name = ingr_name.strip().lower()
+        target_name = ingr_name.strip()
         if not target_name: return []
 
         # (Synonyms logic omitted for brevity, or can be added if needed. Supabase has limited "OR" querying flexibility compared to Django Q objects)
@@ -113,11 +113,19 @@ class SupabaseService:
 
         dur_list = []
         try:
-           response = client.table("dur_master") \
-               .select("*") \
-               .ilike("ingr_eng_name", f"%{target_name}%") \
-               .execute()
-           dur_list = response.data
+            import re
+            is_korean = bool(re.search('[가-힣]', target_name))
+            if is_korean:
+                response = client.table("dur_master") \
+                    .select("*") \
+                    .ilike("ingr_kor_name", f"%{target_name}%") \
+                    .execute()
+            else:
+                response = client.table("dur_master") \
+                    .select("*") \
+                    .ilike("ingr_eng_name", f"%{target_name.lower()}%") \
+                    .execute()
+            dur_list = response.data
         except Exception as e:
             print(f"[Supabase] Error: {e}")
             return []
@@ -180,11 +188,14 @@ class SupabaseService:
         all_results = []
         for ingr in ingr_list:
             if not ingr: continue
+            target = ingr.strip()
             try:
-                response = client.table("dur_master") \
-                    .select("*") \
-                    .ilike("ingr_eng_name", f"%{ingr.strip()}%") \
-                    .execute()
+                import re
+                if bool(re.search('[가-힣]', target)):
+                    response = client.table("dur_master").select("*").ilike("ingr_kor_name", f"%{target}%").execute()
+                else:
+                    response = client.table("dur_master").select("*").ilike("ingr_eng_name", f"%{target.lower()}%").execute()
+                    
                 if response.data:
                     all_results.extend(response.data)
             except Exception as e:

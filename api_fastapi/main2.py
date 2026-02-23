@@ -44,7 +44,7 @@ from services.user_service import UserService
 from services.map_service import MapService
 from routers import auth_router, user_router, drug_router
 # 3. LangGraph 로드 (Uses Patched DrugService naturally)
-from graph_agent.builder import build_graph
+from graph_agent.builder_v2 import build_graph
 
 app = FastAPI(title="Global Drug Safety Intelligence (Supabase Ver.)")
 
