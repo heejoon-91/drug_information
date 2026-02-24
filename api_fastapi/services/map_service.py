@@ -1,7 +1,11 @@
 import os
+import logging
 import httpx
 import re
 import asyncio
+from services.ai_service_v2 import AIService
+
+logger = logging.getLogger(__name__)
 
 class MapService:
     @classmethod
@@ -29,7 +33,13 @@ class MapService:
         특정 주성분이 포함된 미국 내 가용 OTC 제품명(Brand Name) 및 기전 전수 리스트업
         """
         # openFDA에서 substance_name 혹은 generic_name으로 검색. (limit=50)
-        url = f'https://api.fda.gov/drug/label.json?search=openfda.substance_name:"{ingredient}"+OR+openfda.generic_name:"{ingredient}"&limit=50'
+        OTC_FILTER = 'openfda.product_type:"HUMAN OTC DRUG"'
+        url = (
+            f'https://api.fda.gov/drug/label.json'
+            f'?search=(openfda.substance_name:"{ingredient}"+OR+openfda.generic_name:"{ingredient}")'
+            f'+AND+{OTC_FILTER}'
+            f'&limit=50'
+        )
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -60,13 +70,21 @@ class MapService:
                 unique_products = {prod['brand_name']: prod for prod in products_info}.values()
                 sorted_products = sorted(list(unique_products), key=lambda x: x['brand_name'])
                 
+                # 목적(purpose) 한국어 번역
+                purposes_to_translate = [p['purpose'] for p in sorted_products]
+                translated_purposes = await AIService.translate_purposes(purposes_to_translate)
+                
+                for i, prod in enumerate(sorted_products):
+                    if i < len(translated_purposes):
+                        prod['purpose'] = translated_purposes[i]
+                
                 return {
                     "ingredient": ingredient,
                     "products": sorted_products,
                     "count": len(sorted_products)
                 }
             except Exception as e:
-                print(f"Error fetching FDA products for {ingredient}: {e}")
+                logger.error(f"Error fetching FDA products for '{ingredient}': {e}")
                 return {"ingredient": ingredient, "products": [], "error": str(e)}
 
     @classmethod
@@ -80,8 +98,11 @@ class MapService:
             return {"match_type": "NONE", "recommendations": []}
 
         # Full Match 검색 시도 (단순화를 위해 각 성분이 모두 포함되는지 AND 검색)
-        search_query = "+AND+".join([f'(openfda.substance_name:"{ingr}"+OR+openfda.generic_name:"{ingr}")' for ingr in ingredients])
-        url = f'https://api.fda.gov/drug/label.json?search={search_query}&limit=10'
+        OTC_FILTER = 'openfda.product_type:"HUMAN OTC DRUG"'
+        search_query = "+AND+".join(
+            [f'(openfda.substance_name:"{ingr}"+OR+openfda.generic_name:"{ingr}")' for ingr in ingredients]
+        )
+        url = f'https://api.fda.gov/drug/label.json?search={search_query}+AND+{OTC_FILTER}&limit=10'
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
@@ -100,13 +121,21 @@ class MapService:
                             "active_ingredient": active_ingr
                         })
                     
+                    # 목적(purpose) 한국어 번역
+                    purposes_to_translate = [p['purpose'] for p in products]
+                    translated_purposes = await AIService.translate_purposes(purposes_to_translate)
+                    
+                    for i, prod in enumerate(products):
+                        if i < len(translated_purposes):
+                            prod['purpose'] = translated_purposes[i]
+                    
                     return {
                         "match_type": "FULL_MATCH",
                         "description": "모든 성분이 일치하는 미국 복합제 우선 추천",
                         "recommendations": products
                     }
             except Exception as e:
-                print(f"Full match search error: {e}")
+                logger.error(f"Full match search error: {e}")
         
         # Component Match (Full Match 실패 또는 데이터 부족 시 개별 검색)
         component_recommendations = []

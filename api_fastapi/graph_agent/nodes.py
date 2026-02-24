@@ -39,11 +39,20 @@ async def retrieve_fda_node(state: AgentState) -> AgentState:
         fda_ingrs = await DrugService.get_ingrs_from_fda_by_symptoms(eng_kw)
         
         # [Agentic Fallback]
-        # FDA 검색 결과가 없으면, AI에게 성분 추천을 요청하여 DUR 검사를 진행할 수 있도록 함
         if not fda_ingrs:
-            logger.info(f"FDA search failed for '{keyword}'. Requesting AI recommendation.")
-            fda_ingrs = await AIService.recommend_ingredients_for_symptom(keyword or query)
-            logger.info(f"AI recommended ingredients: {fda_ingrs}")
+            logger.info(f"FDA search failed for '{keyword}'. Requesting AI symptom synonyms.")
+            synonyms = await AIService.get_symptom_synonyms(keyword or query)
+            if synonyms:
+                logger.info(f"AI suggested synonyms: {synonyms}. Retrying FDA search.")
+                print(f"🔄 AI가 '{keyword}' 대신 검색해볼 유사 증상 제안: {synonyms}")
+                fda_ingrs = await DrugService.get_ingrs_from_fda_by_symptoms(synonyms)
+            
+            # FDA 재검색도 실패하면 그때 성분 추천으로 폴백
+            if not fda_ingrs:
+                logger.info(f"FDA search with synonyms failed. Requesting AI ingredient recommendation.")
+                fda_ingrs = await AIService.recommend_ingredients_for_symptom(keyword or query)
+                logger.info(f"AI recommended ingredients: {fda_ingrs}")
+                print(f"✨ AI가 추천한 증상({keyword or query}) 대체 성분: {fda_ingrs}")
             
         fda_data = fda_ingrs # Store ingredients list
         

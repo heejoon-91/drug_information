@@ -28,29 +28,23 @@ django.setup()
 from services.drug_service import DrugService
 from services.supabase_service import SupabaseService
 
-logger.info("Monkey-patching DrugService to use Supabase for DUR queries...")
+logger.info("Patching DrugService to use Supabase for DUR queries...")
 DrugService.get_dur_by_ingr = SupabaseService.get_dur_by_ingr
 DrugService.get_enriched_dur_info = SupabaseService.get_enriched_dur_info
-# ------------------------------------------------------------------------------
+
 
 from fastapi import FastAPI, Request, HTTPException, APIRouter
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-# 2. 서비스 로드 (Patched DrugService will be used)
-from services.ai_service import AIService
+from services.ai_service_v2 import AIService
 from services.auth_service import get_current_user_optional
 from services.user_service import UserService
 from services.map_service import MapService
 from routers import auth_router, user_router, drug_router
-# 3. LangGraph 로드 (Uses Patched DrugService naturally)
 from graph_agent.builder_v2 import build_graph
 
-app = FastAPI(title="Global Drug Safety Intelligence (Supabase Ver.)")
-
-# Include routers - Note: logic inside routers might import DrugService. 
-# Since we patched DrugService class methods in memory, any module that imports DrugService 
-# and calls DrugService.method() should see the patched version.
+app = FastAPI(title="Global Drug Safety Intelligence")
 app.include_router(auth_router.router)
 app.include_router(user_router.router)
 app.include_router(drug_router.router)
@@ -146,12 +140,14 @@ async def smart_search(request: Request, q: str):
     
     if category == "symptom_recommendation":
         return templates.TemplateResponse("symptom_result.html", {
-            "request": request, 
-            "symptom": q, 
+            "request": request,
+            "symptom": q,
             "answer": final_answer,
-            "dur_details": result.get("dur_data", []),
+            "ingredients_data": result.get("ingredients_data", []),
+            "dur_details": result.get("dur_data", []),  # 모달 상세 정보용 유지
             "maps_key": os.getenv("GOOGLE_MAPS_API_KEY")
         })
+
 
     elif category == "product_request":
         fda = result.get("fda_data")
@@ -215,10 +211,10 @@ async def global_drug_search(drug_name: str):
 async def get_nearby_pharmacies(lat: float, lng: float):
     try:
         results = await MapService.find_nearby_pharmacies(lat, lng)
-        return {"status": "success", "results": results, "api_key_loaded": bool(os.getenv("GOOGLE_MAPS_API_KEY"))}
+        return {"status": "success", "results": results}
     except Exception as e:
-        import traceback
-        return {"status": "error", "message": str(e), "traceback": traceback.format_exc(), "api_key_loaded": bool(os.getenv("GOOGLE_MAPS_API_KEY"))}
+        logger.error(f"Error fetching pharmacies: {e}")
+        return {"status": "error", "message": str(e)}
 
 app.include_router(router)
 

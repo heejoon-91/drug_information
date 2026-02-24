@@ -1,11 +1,15 @@
 import httpx
+import logging
 from asgiref.sync import sync_to_async
 from django.db.models import Q
 import asyncio
 import re
 
+logger = logging.getLogger(__name__)
+
 class DrugService:
     FDA_BASE_URL = "https://api.fda.gov/drug/label.json"
+    FDA_OTC_FILTER = 'openfda.product_type:"HUMAN OTC DRUG"'
     
     # 성분명 매핑 테이블 (FDA generic_name -> KR DUR ingr_eng_name)
     MANUAL_INGR_MAPPING = {
@@ -21,8 +25,7 @@ class DrugService:
         상세 정보(적응증, 경고, 용법)를 포함하여 반환
         """
         params = {
-            'search': f'openfda.brand_name:"{name}"+OR+openfda.generic_name:"{name}"',
-            # 'limit': 1
+            'search': f'(openfda.brand_name:"{name}"+OR+openfda.generic_name:"{name}")+AND+{cls.FDA_OTC_FILTER}',
         }
         
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -59,20 +62,31 @@ class DrugService:
                     "dosage": result.get('dosage_and_administration', ["Dosage info not provided"])[0]
                 }
             except Exception as e:
-                print(f"Error searching FDA: {e}")
+                logger.error(f"Error searching FDA: {e}")
                 return None
 
     @classmethod
     async def get_ingrs_from_fda_by_symptoms(cls, keywords: list):
         """
         영어 증상 키워드로 FDA 관련 성분명 추출 (비동기 + 병렬 처리)
+        
+        [개선] count=openfda.generic_name.exact 를 사용하여 특정 증상에 대해
+        가장 많이 허가된 다양한 활성 성분 TOP 20을 집계합니다.
+        기존처럼 search+limit=50을 쓰면 결과가 아세트아미노펜 브랜드 50개로
+        꽉 차서 이부프로펜, 나프록센, 아스피린 등이 누락되는 문제가 있었습니다.
         """
         all_ingrs = set()
         
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             tasks = []
             for kw in keywords:
-                url = f"{cls.FDA_BASE_URL}?search=indications_and_usage:{kw}"
+                # count 엔드포인트: OTC 허가 성분명을 빈도 기준으로 집계
+                url = (
+                    f'{cls.FDA_BASE_URL}'
+                    f'?search=indications_and_usage:"{kw}"'
+                    f'+AND+{cls.FDA_OTC_FILTER}'
+                    f'&count=openfda.generic_name.exact'
+                )
                 tasks.append(client.get(url))
             
             responses = await asyncio.gather(*tasks, return_exceptions=True)
@@ -81,15 +95,22 @@ class DrugService:
                 if isinstance(res, httpx.Response) and res.status_code == 200:
                     try:
                         results = res.json().get('results', [])
-                        for item in results:
-                            openfda = item.get('openfda', {})
-                            # generic_name과 substance_name 모두 수집
-                            generics = openfda.get('generic_name', [])
-                            substances = openfda.get('substance_name', [])
-                            
-                            for i in generics + substances:
-                                all_ingrs.add(i.upper())
-                    except:
+                        # count 결과: [{"term": "ACETAMINOPHEN", "count": 911}, ...]
+                        # 상위 20개 성분만 추출 (복합제 성분명은 쉼표 구분으로 분리 시도)
+                        for item in results[:20]:
+                            term = item.get('term', '').upper()
+                            if not term:
+                                continue
+                            # 복합제인 경우 쉼표/AND로 개별 성분 분리
+                            parts = re.split(r',\s*| AND ', term)
+                            for part in parts:
+                                part = part.strip()
+                                # 숫자/단위가 포함된 부가 설명 제거 (예: "500 MG")
+                                part_clean = re.sub(r'\s+\d+.*$', '', part).strip()
+                                if part_clean and len(part_clean) > 2:
+                                    all_ingrs.add(part_clean)
+                    except Exception as e:
+                        logger.warning(f"[FDA count parse error]: {e}")
                         continue
                         
         return list(all_ingrs)
@@ -124,8 +145,7 @@ class DrugService:
         성분명으로 FDA 경고(Warnings) 정보 조회
         """
         params = {
-            'search': f'openfda.generic_name:"{ingr_name}"',
-            # 'limit': 1
+            'search': f'openfda.generic_name:"{ingr_name}"+AND+{cls.FDA_OTC_FILTER}',
         }
         async with httpx.AsyncClient(timeout=5.0) as client:
             try:
@@ -134,8 +154,8 @@ class DrugService:
                     data = res.json().get('results', [])
                     if data:
                         return data[0].get('warnings', ["No FDA warning found."])[0]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error fetching FDA warnings for '{ingr_name}': {e}")
         return None
 
     @classmethod
@@ -207,7 +227,7 @@ class DrugService:
         if len(first_word) > 3:
             search_candidates.add(first_word)
 
-        print(f"[DEBUG] Search Candidates for '{ingr_name}': {search_candidates}")
+        logger.debug(f"Search candidates for '{ingr_name}': {search_candidates}")
 
         # 3. Construct Query
         q_obj = Q()
@@ -224,11 +244,10 @@ class DrugService:
         # [Lazy LLM Expansion]
         if not durs_list and len(target_name) > 2:
             from services.ai_service import AIService
-            print(f"[DEBUG] No direct DUR match for '{target_name}'. Requesting AI synonyms...")
+            logger.debug(f"No direct DUR match for '{target_name}'. Requesting AI synonyms...")
             
-            # This is now valid because we are in an async def
             ai_synonyms = await AIService.get_synonyms(ingr_name)
-            print(f"[DEBUG] AI Synonyms: {ai_synonyms}")
+            logger.debug(f"AI Synonyms for '{ingr_name}': {ai_synonyms}")
             
             if ai_synonyms:
                 q_retry = Q()
@@ -290,7 +309,7 @@ class DrugService:
                 "warning": combined_warning
             })
             
-        print(f"[DEBUG] Found {len(results)} DUR categories (after dedup/translation).")
+        logger.debug(f"Found {len(results)} DUR categories for '{ingr_name}' (after dedup/translation).")
         return results
 
 
@@ -324,7 +343,7 @@ class DrugService:
 
     @classmethod
     async def get_us_mapping(cls, ingredient_name: str):
-        url = f"https://api.fda.gov/drug/label.json?search=openfda.substance_name:\"{ingredient_name}\"&limit=3"
+        url = f"https://api.fda.gov/drug/label.json?search=openfda.substance_name:\"{ingredient_name}\"+AND+openfda.product_type:\"HUMAN OTC DRUG\"&limit=3"
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             if response.status_code != 200:

@@ -136,6 +136,93 @@ class AIService:
             return []
 
     @classmethod
+    async def normalize_symptom_query(cls, query: str) -> str:
+        """
+        사용자의 증상 입력을 분석하여 '증상(Symptom) + 중증도(Severity) + 양상(Quality)'을 갖춘 
+        표준화된 영어 해시 키(Cache Key)로 변환합니다. (예: "머리가 깨질듯 아파" -> "headache_severe_splitting")
+        """
+        client = cls.get_client()
+        if not client: return query.strip().lower()
+
+        prompt = f"""
+        Analyze the following symptom described by a user: "{query}"
+        
+        Extract the core symptom, its severity, and its quality (if any).
+        Normalize these into standard English medical terms.
+        
+        Rules:
+        1. "symptom": The core issue (e.g., "headache", "stomachache", "cough")
+        2. "severity": "mild", "moderate", or "severe". (Default is "moderate" if not specified)
+        3. "quality": How it feels (e.g., "splitting", "dull", "sharp", "burning"). If not specified or obvious, use "none".
+        
+        Return a JSON object with these exactly 3 keys:
+        {{"symptom": "...", "severity": "...", "quality": "..."}}
+        """
+        
+        try:
+            res = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": "You are a medical semantics analyzer."},
+                          {"role": "user", "content": prompt}],
+                response_format={ "type": "json_object" }
+            )
+            content = res.choices[0].message.content
+            data = json.loads(content)
+            
+            symptom = data.get("symptom", "").strip().lower().replace(" ", "_").replace("-", "_")
+            severity = data.get("severity", "moderate").strip().lower()
+            quality = data.get("quality", "none").strip().lower()
+            
+            if not symptom:
+                return query.strip().lower()
+                
+            return f"{symptom}_{severity}_{quality}"
+        except Exception as e:
+            print(f"Error in normalize_symptom_query: {e}")
+            # 폴백: 정해진 해시 방식 전처리가 실패하면 기본 공백 전터리 키 반환
+            import re
+            return re.sub(r'\s+', '_', re.sub(r'[^\w\s가-힣]', '', query.strip())).lower()
+
+    @classmethod
+    async def get_symptom_synonyms(cls, symptom: str):
+        """
+        FDA 검색 실패 시, 해당 증상과 유사한 영문 의학 용어(Synonyms)를 AI에게 조회하여 
+        FDA API 재검색에 사용할 키워드를 확보함
+        """
+        client = cls.get_client()
+        if not client: return []
+
+        prompt = f"""
+        The user searched for the medical symptom: "{symptom}", but no direct match was found in the FDA indication database.
+        Please provide 3-5 alternative standard English medical terms or related keywords (e.g., "headache" -> "migraine", "pain relief").
+        
+        Return ONLY a JSON list of strings. Example: ["migraine", "pain relief", "head pain"]
+        """
+        
+        try:
+            res = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": "You are a medical terminologist."},
+                          {"role": "user", "content": prompt}],
+                response_format={ "type": "json_object" }
+            )
+            content = res.choices[0].message.content
+            data = json.loads(content)
+            
+            if isinstance(data, list): return data
+            if isinstance(data, dict):
+                # Flatten all values if dict
+                synonyms = []
+                for v in data.values():
+                    if isinstance(v, list): synonyms.extend(v)
+                    elif isinstance(v, str): synonyms.append(v)
+                return synonyms
+            return []
+        except Exception as e:
+            print(f"Error in get_symptom_synonyms: {e}")
+            return []
+
+    @classmethod
     async def get_synonyms(cls, ingredient: str):
         """
         DUR 검색 실패 시, 해당 성분의 이명(Synonyms)이나 한국어 통용 명칭을 AI에게 조회
@@ -203,3 +290,36 @@ class AIService:
         except Exception as e:
             print(f"Error in summarize_fda_warning: {e}")
             return None
+
+    @classmethod
+    async def translate_purposes(cls, purposes: list) -> list:
+        """
+        FDA 약물 purpose(효능/설명)를 한국어로 일괄 번역
+        """
+        client = cls.get_client()
+        if not client or not purposes:
+            return purposes
+
+        prompt = f"""
+        Translate the following list of medical drug purposes (indications/descriptions) into Korean concisely (1-2 sentences each).
+        Return ONLY a JSON object with a key 'translated_purposes' containing the list of translated strings in the exact same order and length.
+        
+        Input list:
+        {json.dumps(purposes, ensure_ascii=False)}
+        """
+        
+        try:
+            res = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a professional medical translator."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={ "type": "json_object" },
+                temperature=0.1
+            )
+            content = json.loads(res.choices[0].message.content)
+            return content.get("translated_purposes", purposes)
+        except Exception as e:
+            print(f"Error in translate_purposes: {e}")
+            return purposes

@@ -34,6 +34,10 @@ def build_graph():
 
     # Define Routing Logic
     def route_query(state: AgentState):
+        # [V2 Cache] 캐시 적중 시 API 페치 우회
+        if state.get("is_cached", False):
+            return "cached_symptom"
+            
         category = state["category"]
         if category == "symptom_recommendation":
             return "indication"
@@ -49,6 +53,7 @@ def build_graph():
         "classify",
         route_query,
         {
+            "cached_symptom": "answer_symptom",
             "indication": "retrieve_fda",
             "product": "retrieve_fda",
             "general": "answer_general",
