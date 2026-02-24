@@ -18,8 +18,9 @@ You will receive the user's symptom, their health profile, and enriched DUR data
 3. Set "can_take" to true if the ingredient is generally safe for the user, false if there is a clear contraindication or conflict with their profile.
 4. Write a concise Korean "reason" (1 sentence) explaining the safety decision.
 5. List the most important DUR warning category names in "dur_warning_types" (e.g. ["임부 금기", "노인 주의"]). Empty list if none.
-6. Write a 1-2 sentence Korean "summary" as an overall personalized guidance opener.
-7. Output MUST BE strictly JSON. No markdown, no extra text.
+6. **CRITICAL: Keep "name" as the English Generic Name provided in [DUR Data]. DO NOT translate the "name" field to Korean.**
+7. Write a 1-2 sentence Korean "summary" as an overall personalized guidance opener.
+8. Output MUST BE strictly JSON. No markdown, no extra text.
 
 [Output JSON Format]
 {{
