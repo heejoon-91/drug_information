@@ -19,13 +19,13 @@ class MapService:
         return []
 
     @classmethod
-    async def get_us_otc_products_by_ingredient(cls, ingredient: str):
-        logger.info(f"[MapService] Fetching US OTC products for ingredient: '{ingredient}'")
+    async def get_us_otc_products_by_ingredient(cls, ingredient: str, translate: bool = True):
+        logger.info(f"[MapService] Fetching US OTC products for ingredient: '{ingredient}' (translate={translate})")
         result = await _fda_client.get_otc_products_by_ingredient(ingredient)
         products = result.get("products", [])
         logger.info(f"[MapService] Found {len(products)} products for '{ingredient}'")
         
-        if products:
+        if translate and products:
             purposes = [p['purpose'] for p in products]
             translated = await AIService.translate_purposes(purposes)
             for i, prod in enumerate(products):
