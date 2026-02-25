@@ -1,3 +1,4 @@
+import time
 import logging
 import asyncio
 from .state import AgentState
@@ -5,17 +6,18 @@ from application.services.ai_service import AIService
 from application.use_cases.drug_search import DrugSearchUseCase
 from application.use_cases.symptom_recommend import SymptomRecommendUseCase
 from application.use_cases.dur_inquiry import DurInquiryUseCase
-from infrastructure.django_db.drug_repository import DjangoDrugRepository
-from infrastructure.django_db.dur_repository import DjangoDurRepository
+from infrastructure.supabase_db.drug_repository import SupabaseDrugRepository
+from infrastructure.supabase_db.dur_repository import SupabaseDurRepository
 from infrastructure.external_api.fda_client import FdaClient
 
 from infrastructure.cache.supabase_cache import SupabaseCacheRepository
 
 logger = logging.getLogger(__name__)
 
-# 의존성 조립
-drug_repo = DjangoDrugRepository()
-dur_repo = DjangoDurRepository()
+# --- 시스템 로직 버전 (프롬프트나 규칙 변경 시 업데이트) ---
+LOGIC_VERSION = "2026.02.26.v5" 
+drug_repo = SupabaseDrugRepository()
+dur_repo = SupabaseDurRepository()
 fda_client = FdaClient()
 cache_repo = SupabaseCacheRepository()
 
@@ -29,35 +31,37 @@ symptom_recommend_use_case = SymptomRecommendUseCase(
 dur_inquiry_use_case = DurInquiryUseCase(dur_repo)
 
 async def classify_node(state: AgentState) -> AgentState:
-    """Classify user query and extract keywords"""
+    """Classify user query and extract keywords (Integrated v2)"""
     query = state["query"]
-    cache_key = await AIService.normalize_symptom_query(query)
-    logger.info(f"Classifying query (cache_key: {cache_key})")
-    
-    # 캐시 확인 (Symptom Recommendation 한정)
+    t0 = time.time()
+
+    # 1. 통합 의도 분류 및 키 정규화 (AI 호출 1회)
+    intent = await AIService.classify_intent_v2(query)
+    logger.info(f"[⏱ TIMING] classify_intent_v2: {time.time()-t0:.2f}s")
+
+    category = intent.get("category", "invalid")
+    keyword = intent.get("keyword", "")
+    cache_key = intent.get("cache_key", query)
+    logger.info(f"Classified query: {category} (cache_key: {cache_key})")
+
+    # 캐시 확인
+    t1 = time.time()
     cached_data = await cache_repo.get_symptom_cache(cache_key)
+    logger.info(f"[⏱ TIMING] cache_lookup: {time.time()-t1:.2f}s")
+
     if cached_data:
-        final_ans = cached_data.get("final_answer", "")
-        # 지능형 캐시 갱신: 새로운 프롬프트 형식(### 1. 상황별)이 없는 구버전 캐시는 무시
-        if "### 1. 상황별" in final_ans:
-            logger.info(f"Cache Hit (v2 format) for key: {cache_key}")
+        cached_version = cached_data.get("logic_version")
+        if cached_version == LOGIC_VERSION:
+            logger.info(f"Cache Hit for key: {cache_key}")
             return {
                 "category": cached_data.get("category", "symptom_recommendation"),
                 "keyword": "",
                 "symptom": query,
                 "cache_key": cache_key,
                 "is_cached": True,
-                "fda_data": cached_data.get("fda_data"),
-                "dur_data": cached_data.get("dur_data"),
-                "final_answer": final_ans,
-                "ingredients_data": cached_data.get("recommended_ingredients")
+                "cached_data": cached_data
             }
-        else:
-            logger.info(f"Obsolete cache found for key {cache_key}. Forcing refresh.")
 
-    intent = await AIService.classify_intent(query)
-    category = intent.get("category", "invalid")
-    keyword = intent.get("keyword", "")
     return {
         "category": category,
         "keyword": keyword,
@@ -72,26 +76,59 @@ async def retrieve_fda_node(state: AgentState) -> AgentState:
     keyword = state["keyword"]
     query = state["query"]
     fda_data = None
+    t0 = time.time()
+
     if category == "symptom_recommendation":
         keyword = keyword or query
         fda_data = await symptom_recommend_use_case.get_fda_ingredients_for_symptom(keyword)
+        logger.info(f"[⏱ TIMING] retrieve_fda (symptom, ingredients={len(fda_data) if fda_data else 0}): {time.time()-t0:.2f}s")
     elif category == "product_request":
         target = keyword if keyword and keyword != "none" else query
         fda_data = await fda_client.search_by_name(target)
+        logger.info(f"[⏱ TIMING] retrieve_fda (product): {time.time()-t0:.2f}s")
+
     return {"fda_data": fda_data}
 
 async def retrieve_dur_node(state: AgentState) -> AgentState:
     """Retrieve DUR data based on FDA ingredients"""
     category = state["category"]
     fda_data = state["fda_data"]
+    is_cached = state.get("is_cached", False)
+    cached_data = state.get("cached_data")
+
     if not fda_data:
-        return {"dur_data": []}
+        return {"dur_data": [], "data_hash": None}
+
     dur_data = []
+    t0 = time.time()
     if category == "symptom_recommendation" and isinstance(fda_data, list):
         dur_data = await symptom_recommend_use_case.get_enriched_dur_for_ingredients(fda_data)
+        logger.info(f"[⏱ TIMING] retrieve_dur (symptom, ingrs={len(fda_data)}): {time.time()-t0:.2f}s")
+
+        # 데이터 무결성 검증
+        current_hash = cache_repo.compute_hash({"fda": fda_data, "dur": dur_data})
+        if is_cached and cached_data:
+            cached_hash = cached_data.get("data_hash")
+            if current_hash == cached_hash:
+                logger.info(f"[Smart Cache] Data Hash Match ({current_hash}). Using cache.")
+                return {
+                    "dur_data": dur_data,
+                    "data_hash": current_hash,
+                    "fda_data": cached_data.get("fda_data"),
+                    "final_answer": cached_data.get("final_answer"),
+                    "ingredients_data": cached_data.get("recommended_ingredients")
+                }
+            else:
+                logger.warning(f"[Smart Cache] Data Mismatch ({cached_hash} -> {current_hash}). Invalidate cache.")
+                return {"dur_data": dur_data, "data_hash": current_hash, "is_cached": False}
+        
+        return {"dur_data": dur_data, "data_hash": current_hash}
+
     elif category == "product_request" and isinstance(fda_data, dict):
         ingrs = fda_data.get('active_ingredients', '')
         dur_data = await dur_inquiry_use_case.get_by_ingredient_text(ingrs)
+        logger.info(f"[⏱ TIMING] retrieve_dur (product): {time.time()-t0:.2f}s")
+    
     return {"dur_data": dur_data}
 
 async def generate_symptom_answer_node(state: AgentState) -> AgentState:
@@ -99,6 +136,7 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
     symptom = state["symptom"]
     dur_data = state["dur_data"]
     fda_data = state.get("fda_data", [])
+    t_node_start = time.time()
 
     if state.get("is_cached", False):
         return {
@@ -118,48 +156,48 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
         prefix = "해당 증상에 대한 FDA/DUR 기반의 정확한 의약품 정보는 찾을 수 없었지만, 일반적인 정보를 안내해 드립니다.\\n\\n"
         return {"final_answer": prefix + answer, "ingredients_data": []}
 
-    # 1. AI 답변 생성 (구조화된 가이드)
-    ai_result = await AIService.generate_symptom_answer(symptom, dur_data, state.get("user_profile"))
-    if not isinstance(ai_result, dict):
-        return {"final_answer": str(ai_result), "dur_data": dur_data, "ingredients_data": []}
-    
-    summary = ai_result.get("summary", "")
-    ai_ingredients = ai_result.get("ingredients", [])
-    dur_map = {item["ingredient"].upper(): item for item in dur_data}
-    safe_names = [ing["name"].upper() for ing in ai_ingredients if ing.get("can_take", False)]
-    
-    # 2. 제품 정보 수집 (번역 없이 병렬로 고속 수집)
+    # 1. AI 답변 생성 & 제품 정보 사전 수집 병렬 실행
     from application.services.map_service import MapService
+    
+    candidate_names = [item["ingredient"].upper() for item in dur_data]
+    
     async def fetch_raw_products(ingr_name: str):
         try:
-            # translate=False 파라미터로 AI 번역 지연 제거
             res = await MapService.get_us_otc_products_by_ingredient(ingr_name, translate=False)
             return ingr_name, res.get("products", [])
         except Exception as e:
             logger.warning(f"Failed to fetch raw products for '{ingr_name}': {e}")
             return ingr_name, []
 
-    raw_results = await asyncio.gather(*[fetch_raw_products(n) for n in safe_names])
-    products_by_ingr = dict(raw_results)
+    tasks = [
+        AIService.generate_symptom_answer(symptom, dur_data, state.get("user_profile")),
+        asyncio.gather(*[fetch_raw_products(n) for n in candidate_names])
+    ]
+    
+    logger.info(f"[⏱ TIMING] starting parallel: AI answer + product pre-fetch for {len(candidate_names)} ingredients...")
+    t1 = time.time()
+    ai_result, raw_product_results = await asyncio.gather(*tasks)
+    logger.info(f"[⏱ TIMING] parallel (AI answer + product pre-fetch): {time.time()-t1:.2f}s")
 
-    # 3. 벌크 번역 (Bulk Translation) - 모든 제품의 purpose를 한 번에 번역
-    all_purposes = []
-    purpose_refs = [] # (ingr_name, product_index)
-    for ingr_name in safe_names:
-        prods = products_by_ingr.get(ingr_name, [])
-        for idx, p in enumerate(prods):
-            all_purposes.append(p.get("purpose", ""))
-            purpose_refs.append((ingr_name, idx))
+    if not isinstance(ai_result, dict):
+        return {"final_answer": str(ai_result), "dur_data": dur_data, "ingredients_data": []}
+    
+    summary = ai_result.get("summary", "")
+    ai_ingredients = ai_result.get("ingredients", [])
+    products_by_ingr = dict(raw_product_results)
 
-    if all_purposes:
-        logger.info(f"Bulk translating {len(all_purposes)} purposes at once...")
-        translated_list = await AIService.translate_purposes(all_purposes)
-        # 번역 결과 다시 매핑
-        for i, trans_text in enumerate(translated_list):
-            ingr_name, idx = purpose_refs[i]
-            products_by_ingr[ingr_name][idx]["purpose"] = trans_text
+    # 성분 누락 여부 디버그 로그
+    dur_ingr_names = [d["ingredient"].upper() for d in dur_data]
+    ai_ingr_names = [i.get("name", "").upper() for i in ai_ingredients]
+    missing = set(dur_ingr_names) - set(ai_ingr_names)
+    logger.info(f"[🔍 DEBUG] DUR성분({len(dur_ingr_names)}개): {dur_ingr_names}")
+    logger.info(f"[🔍 DEBUG] AI응답성분({len(ai_ingr_names)}개): {ai_ingr_names}")
+    if missing:
+        logger.warning(f"[🔍 DEBUG] AI가 누락한 성분: {missing}")
 
-    # 4. 최종 데이터 조합
+    # 2. 최종 데이터 조합 (purpose는 FDA 영어 원문 그대로 사용 — 번역 제거로 속도 대폭 향상)
+    # 3. 최종 데이터 조합
+    dur_map = {item["ingredient"].upper(): item for item in dur_data}
     ingredients_data = []
     for ing in ai_ingredients:
         name = ing.get("name", "").upper()
@@ -175,17 +213,23 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
         }
         ingredients_data.append(entry)
 
-    # 5. 최신 버전 캐시 저장
+    # 4. 캐시 저장
     cache_key = state.get("cache_key")
     if cache_key:
+        t3 = time.time()
         await cache_repo.set_symptom_cache(
             query_text=cache_key,
             category="symptom_recommendation",
-            fda_data=state.get("fda_data", []),
+            fda_data=fda_data,
             dur_data=dur_data,
             final_answer=summary,
-            recommended_ingredients=ingredients_data
+            recommended_ingredients=ingredients_data,
+            # data_hash=state.get("data_hash"), # DB 컬럼 누락으로 인한 제외
+            logic_version=LOGIC_VERSION
         )
+        logger.info(f"[⏱ TIMING] cache_save: {time.time()-t3:.2f}s")
+
+    logger.info(f"[⏱ TIMING] generate_symptom_answer_node total: {time.time()-t_node_start:.2f}s")
 
     return {
         "final_answer": summary,

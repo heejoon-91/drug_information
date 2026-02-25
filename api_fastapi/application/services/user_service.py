@@ -1,41 +1,31 @@
-from asgiref.sync import sync_to_async
-from django.contrib.auth.models import User
-from drugs.models import UserProfile
+from infrastructure.supabase_db.user_repository import SupabaseUserRepository
+
+user_repo = SupabaseUserRepository()
 
 class UserService:
     @staticmethod
-    @sync_to_async
-    def get_profile(user: User):
-        try:
-            return user.profile
-        except UserProfile.DoesNotExist:
-            return None
+    async def get_profile(user: dict):
+        user_id = user.get("id")
+        if not user_id: return None
+        return await user_repo.get_profile_by_user_id(user_id)
 
     @staticmethod
-    @sync_to_async
-    def update_profile(user: User, medications: str, allergies: str, diseases: str):
-        profile, created = UserProfile.objects.get_or_create(user=user)
-        profile.current_medications = medications
-        profile.allergies = allergies
-        profile.chronic_diseases = diseases
-        profile.save()
-        return profile
+    async def update_profile(user: dict, medications: str, allergies: str, diseases: str):
+        user_id = user.get("id")
+        if not user_id: return None
+        success = await user_repo.update_profile(user_id, medications, allergies, diseases)
+        if success:
+            return await user_repo.get_profile_by_user_id(user_id)
+        return None
 
     @staticmethod
-    @sync_to_async
-    def get_user_info(user_id: int):
-        try:
-            user = User.objects.get(pk=user_id)
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            return {
-                "id": user.id,
-                "username": user.username,
-                "email": user.email,
-                "profile": {
-                    "current_medications": profile.current_medications,
-                    "allergies": profile.allergies,
-                    "chronic_diseases": profile.chronic_diseases
-                }
-            }
-        except User.DoesNotExist:
-            return None
+    async def get_user_info(user_id: int):
+        user = await user_repo.get_user_by_id(user_id)
+        if not user: return None
+        profile = await user_repo.get_profile_by_user_id(user_id)
+        return {
+            "id": user.get("id"),
+            "username": user.get("username"),
+            "email": user.get("email"),
+            "profile": profile
+        }

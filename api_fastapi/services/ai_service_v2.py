@@ -26,12 +26,11 @@ class AIService:
             return None
 
     @classmethod
-    async def classify_intent(cls, query: str):
-        """질문 분류 및 영어 키워드 동시 추출 (Router)"""
+    async def classify_intent_v2(cls, query: str):
+        """질문 분류 및 영어 키워드, 캐시 키 동시 추출 (통합 라우터)"""
         client = cls.get_client()
         if not client:
-            logger.warning("OpenAI Client is None. Returning default.")
-            return {"category": "product_request", "category_reason": "No Client", "keyword": query}
+            return {"category": "product_request", "keyword": query, "cache_key": query}
 
         try:
             res = await client.chat.completions.create(
@@ -42,10 +41,13 @@ class AIService:
                 temperature=0,
                 response_format={"type": "json_object"}
             )
-            return json.loads(res.choices[0].message.content)
+            data = json.loads(res.choices[0].message.content)
+            if "cache_key" not in data:
+                data["cache_key"] = data.get("keyword") or query
+            return data
         except Exception as e:
-            logger.error(f"Error in classify_intent: {e}")
-            return {"category": "product_request", "keyword": query}
+            logger.error(f"Error in classify_intent_v2: {e}")
+            return {"category": "product_request", "keyword": query, "cache_key": query}
 
     @classmethod
     async def generate_symptom_answer(cls, symptom, data, user_profile=None):
@@ -65,20 +67,29 @@ class AIService:
             logger.debug(f"User Profile — Meds: {meds}, Allergies: {allergies}, Diseases: {diseases}")
 
         try:
+            analysis_data = {
+                "symptom": symptom,
+                "current_medications": meds,
+                "allergies": allergies,
+                "chronic_diseases": diseases
+            }
+            
+            ingredient_count = len(data) if isinstance(data, list) else 1
+            
+            # .format() 대신 .replace() 사용하여 중괄호 {} 충돌 방지
+            system_prompt = SYMPTOM_RESPONSE_PROMPT_V2.replace("{analysis}", json.dumps(analysis_data, ensure_ascii=False))
+            system_prompt = system_prompt.replace("{data}", str(data))
+            system_prompt = system_prompt.replace("{ingredient_count}", str(ingredient_count))
+
             res = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {
                         "role": "system",
-                        "content": SYMPTOM_RESPONSE_PROMPT_V2.format(
-                            symptom=symptom,
-                            data=str(data),
-                            medications=meds,
-                            allergies=allergies,
-                            chronic_diseases=diseases
-                        )
+                        "content": system_prompt
                     }
                 ],
+                temperature=0,
                 response_format={"type": "json_object"}
             )
             return json.loads(res.choices[0].message.content)
@@ -276,35 +287,41 @@ class AIService:
             return []
 
     @classmethod
-    async def summarize_fda_warning(cls, text: str):
-        """
-        FDA 경고문(영문)을 한국어로 핵심만 요약
-        """
+    async def bulk_summarize_fda_warnings(cls, warnings_dict: dict) -> dict:
+        """여러 성분의 FDA 경고문을 한 번에 요약 (벌크 처리)"""
         client = cls.get_client()
-        if not client or not text:
-            return None
+        if not client or not warnings_dict:
+            return {}
+
+        targets = {k: v for k, v in warnings_dict.items() if v and len(v) > 20}
+        if not targets:
+            return {k: "특이사항 없음" for k in warnings_dict.keys()}
 
         prompt = f"""
-        Summarize the following FDA warning text into **Korean** in 1-2 concise sentences.
-        Focus on the most critical safety information (contraindications, serious side effects).
-        If the text is generic (e.g., "See full prescribing information"), return "특이사항 없음".
+        Translate and summarize the following FDA drug warnings into Korean (1-2 sentences each).
+        Return ONLY a JSON object where keys are the ingredient names and values are the summarized Korean text.
         
-        [FDA Warning Text]:
-        {text[:1000]}
+        [Warnings to Summarize]:
+        {json.dumps(targets, ensure_ascii=False)}
         """
 
         try:
             res = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a medical translator."},
+                    {"role": "system", "content": "You are a medical translator specialized in drug safety."},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                temperature=0,
+                response_format={"type": "json_object"}
             )
-            return res.choices[0].message.content.strip()
+            summaries = json.loads(res.choices[0].message.content)
+            result = {k: "특이사항 없음" for k in warnings_dict.keys()}
+            result.update(summaries)
+            return result
         except Exception as e:
-            logger.error(f"Error in summarize_fda_warning: {e}")
-            return None
+            logger.error(f"Error in bulk_summarize_fda_warnings: {e}")
+            return {k: "요약 오류" for k in warnings_dict.keys()}
 
     @classmethod
     async def translate_purposes(cls, purposes: list) -> list:

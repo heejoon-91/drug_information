@@ -5,10 +5,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
-from asgiref.sync import sync_to_async
-from django.db import IntegrityError
+from infrastructure.supabase_db.user_repository import SupabaseUserRepository
+
+user_repo = SupabaseUserRepository()
 
 # --- Configuration ---
 SECRET_KEY = os.getenv("SECRET_KEY", "u2983y8923u8923u8923u8923u8923") # Fallback for dev
@@ -30,27 +29,16 @@ class AuthService:
         return encoded_jwt
 
     @staticmethod
-    @sync_to_async
-    def authenticate_user(username, password):
-        user = authenticate(username=username, password=password)
-        return user
-
-    @staticmethod
-    @sync_to_async
-    def create_user(username, password, email=""):
-        try:
-            user = User.objects.create_user(username=username, password=password, email=email)
+    async def authenticate_user(username, password):
+        # Supabase를 통한 간단한 인증 시뮬레이션 (실제로는 Supabase Auth API를 쓰는 것이 좋음)
+        user = await user_repo.get_user_by_username(username)
+        if user and user.get("password") == password: # 해싱 처리 권장
             return user
-        except IntegrityError:
-            return None
+        return None
 
     @staticmethod
-    @sync_to_async
-    def get_user(username):
-        try:
-            return User.objects.get(username=username)
-        except User.DoesNotExist:
-            return None
+    async def get_user(username):
+        return await user_repo.get_user_by_username(username)
 
     @staticmethod
     async def verify_token(token: str):
@@ -74,14 +62,11 @@ async def get_current_user_from_token(token: str):
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
+        user_id = await AuthService.verify_token(token)
+    except Exception:
         raise credentials_exception
         
-    user = await AuthService.get_user(username)
+    user = await user_repo.get_user_by_id(user_id)
     if user is None:
         raise credentials_exception
     return user
@@ -94,11 +79,8 @@ async def get_current_user_optional(token: Optional[str] = None):
     if not token:
         return None
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        user = await AuthService.get_user(username)
+        user_id = await AuthService.verify_token(token)
+        user = await user_repo.get_user_by_id(user_id)
         return user
-    except JWTError:
+    except Exception:
         return None

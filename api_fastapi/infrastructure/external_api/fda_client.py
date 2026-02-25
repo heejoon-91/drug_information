@@ -10,7 +10,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 FDA_BASE_URL = "https://api.fda.gov/drug/label.json"
-FDA_OTC_FILTER = 'openfda.product_type:"HUMAN OTC DRUG"'
+FDA_OTC_FILTER = 'openfda.product_type:"HUMAN OTC DRUG" AND _exists_:openfda.application_number'
 
 
 class FdaClient:
@@ -24,7 +24,7 @@ class FdaClient:
         salts = [
             ' SODIUM', ' POTASSIUM', ' HYDROCHLORIDE', ' HCL', ' MALEATE', 
             ' CALCIUM', ' PHOSPHATE', ' SULFATE', ' TARTRATE', ' BROMIDE',
-            ' CITRATE', ' ACETATE', ' FUMARATE'
+            ' CITRATE', ' ACETATE', ' FUMARATE', ' HYDROBROMIDE', ' HBR', ' MONOHYDRATE'
         ]
         base_name = name
         for salt in salts:
@@ -105,7 +105,8 @@ class FdaClient:
                 kw_up = kw.upper()
                 params = {
                     'search': f'indications_and_usage:"{kw_up}" AND {FDA_OTC_FILTER}',
-                    'count': 'openfda.generic_name.exact'
+                    'count': 'openfda.generic_name.exact',
+                    'limit': 100  # 통계적 유의성을 위해 분석 범위 확대
                 }
                 tasks.append(client.get(FDA_BASE_URL, params=params))
 
@@ -115,29 +116,36 @@ class FdaClient:
                 if isinstance(res, httpx.Response) and res.status_code == 200:
                     try:
                         results = res.json().get('results', [])
-                        for item in results[:20]:
+                        for item in results:
                             term = item.get('term', '').upper()
+                            count = item.get('count', 0)
                             if not term:
                                 continue
-                            parts = re.split(r',\s*| AND ', term)
+                            
+                            parts = [p.strip() for p in re.split(r',\s*| AND ', term)]
+                            
+                            # 단일 성분 제품인 경우 가중치(x2) 부여 - 해당 증상의 전용 약물일 확률이 높음
+                            is_single = (len(parts) == 1)
+                            weight = 2 if is_single else 1
+                            
                             for part in parts:
-                                part = part.strip()
-                                # 숫자로 시작하는 함량 정보 등 제거
+                                # 1. 숫자로 시작하는 함량 정보 등 제거
                                 part_clean = re.sub(r'\s+\d+.*$', '', part).strip()
-                                if part_clean and len(part_clean) > 2:
-                                    ingr_counts[part_clean] += 1
+                                # 2. 접미사 제거하여 베이스 성분명 추출
+                                base_name = self._get_base_ingredient_name(part_clean)
+                                
+                                if base_name and len(base_name) > 2:
+                                    ingr_counts[base_name] += (count * weight)
                     except Exception as e:
                         logger.warning(f"[FdaClient] count 파싱 오류: {e}")
 
-        # 결정적 정렬: 
-        # 1순위: 빈도수 내림차순 (많이 등장한 성분) 
-        # 2순위: 이름 오름차순 (알파벳 순서 고정)
+        # 빈도(가중치 합산) 순으로 정렬
         sorted_ingrs = sorted(
             ingr_counts.keys(), 
             key=lambda x: (-ingr_counts[x], x)
         )
         
-        return sorted_ingrs
+        return sorted_ingrs[:5]
 
     async def get_warnings_by_ingredient(self, ingr_name: str) -> str | None:
         """성분명으로 FDA 경고(Warnings) 정보 조회"""
@@ -163,7 +171,7 @@ class FdaClient:
         ingr_up = ingredient.upper()
         params = {
             'search': f'(openfda.substance_name:"{ingr_up}" OR openfda.generic_name:"{ingr_up}") AND {FDA_OTC_FILTER}',
-            'limit': 50
+            'limit': 10  # 최대 10개만 조회 (번역 비용 방지)
         }
 
         data = await self._fetch_from_fda(params)
@@ -188,9 +196,9 @@ class FdaClient:
                     "active_ingredient": item.get('active_ingredient', ["Unknown"])[0],
                 })
 
-            # 중복 제거 (brand_name 기준)
+            # 중복 제거 (brand_name 기준) 후 상위 5개만 반환
             unique = {p['brand_name'].upper(): p for p in products_info}
-            sorted_products = sorted(unique.values(), key=lambda x: x['brand_name'])
+            sorted_products = sorted(unique.values(), key=lambda x: x['brand_name'])[:5]  # 🔑 최대 5개
 
             return {
                 "ingredient": ingredient,

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import List
 
-from infrastructure.django_db.drug_repository import DjangoDrugRepository
-from infrastructure.django_db.dur_repository import DjangoDurRepository
+from infrastructure.supabase_db.drug_repository import SupabaseDrugRepository
+from infrastructure.supabase_db.dur_repository import SupabaseDurRepository
 from infrastructure.external_api.fda_client import FdaClient
 from infrastructure.cache.supabase_cache import SupabaseCacheRepository
 from application.use_cases.drug_search import DrugSearchUseCase
@@ -12,8 +12,8 @@ from domain.drug.services import DurAnalysisService
 router = APIRouter(prefix="/api/drugs", tags=["drugs"])
 
 # DI (인터페이스 계층에서 인프라와 애플리케이션 계층을 조립)
-drug_repo = DjangoDrugRepository()
-dur_repo = DjangoDurRepository()
+drug_repo = SupabaseDrugRepository()
+dur_repo = SupabaseDurRepository()
 fda_client = FdaClient()
 supabase_cache = SupabaseCacheRepository()
 dur_analysis_svc = DurAnalysisService()

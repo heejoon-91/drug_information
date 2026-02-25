@@ -1,6 +1,5 @@
 import os
 import sys
-import django
 import logging
 from dotenv import load_dotenv
 
@@ -8,24 +7,18 @@ from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 1. Django 초기화 및 환경변수 로드
+# 1. 환경변수 로드
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
-sys.path.append(os.path.join(project_root, 'backend_django'))
 
-# .env 파일 명시적 로드
-env_path = os.path.join(project_root, '.env')
-load_dotenv(env_path)
-logger.info(f"Loading .env from: {env_path}")
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
-django.setup()
+load_dotenv(os.path.join(project_root, '.env'))
+logger.info(f"Loading .env from: {os.path.join(project_root, '.env')}")
 
 # ------------------------------------------------------------------------------
 # DDD Infrastructure & Application Layer Initialization
 # ------------------------------------------------------------------------------
-from infrastructure.django_db.drug_repository import DjangoDrugRepository
-from infrastructure.django_db.dur_repository import DjangoDurRepository
+from infrastructure.supabase_db.drug_repository import SupabaseDrugRepository
+from infrastructure.supabase_db.dur_repository import SupabaseDurRepository
 from infrastructure.external_api.fda_client import FdaClient
 from infrastructure.cache.supabase_cache import SupabaseCacheRepository
 from application.use_cases.drug_search import DrugSearchUseCase
@@ -36,8 +29,8 @@ from application.services.auth_service import get_current_user_optional
 from application.services.map_service import MapService
 
 # Repository & Client 인스턴스
-drug_repo = DjangoDrugRepository()
-dur_repo = DjangoDurRepository()
+drug_repo = SupabaseDrugRepository()
+dur_repo = SupabaseDurRepository()
 fda_client = FdaClient()
 supabase_cache = SupabaseCacheRepository()
 

@@ -153,7 +153,9 @@ class SupabaseCacheRepository(CacheRepository):
     async def set_symptom_cache(
         self, query_text: str, category: str,
         fda_data: list, dur_data: list,
-        final_answer: str, recommended_ingredients: list
+        final_answer: str, recommended_ingredients: list,
+        data_hash: str | None = None,
+        logic_version: str | None = None
     ) -> bool:
         client = self.get_client()
         if not client:
@@ -166,13 +168,25 @@ class SupabaseCacheRepository(CacheRepository):
                 "dur_data": dur_data or [],
                 "final_answer": final_answer,
                 "recommended_ingredients": recommended_ingredients or [],
+                # "data_hash": data_hash, # DB 컬럼 누락 에러 방지를 위해 확실히 제외
+                "logic_version": logic_version
             }
             client.table("search_cache").upsert(payload, on_conflict="query_text").execute()
-            logger.info(f"[Cache Saved] query='{query_text}'")
+            logger.info(f"[Cache Saved] query='{query_text}' (v={logic_version})")
             return True
         except Exception as e:
             logger.error(f"[Cache] 저장 오류 ('{query_text}'): {e}")
             return False
+
+    @staticmethod
+    def compute_hash(data: any) -> str:
+        """데이터의 결정론적 해시 생성 (무결성 검증용)"""
+        import hashlib
+        import json
+        
+        # 순서 보장을 위해 정렬된 JSON 문자열로 변환
+        dumped = json.dumps(data, sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(dumped.encode("utf-8")).hexdigest()[:16]
 
     async def get_roadmap_cache(self, query_text: str) -> dict | None:
         client = self.get_client()

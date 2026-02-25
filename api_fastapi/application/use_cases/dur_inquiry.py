@@ -43,21 +43,27 @@ class DurInquiryUseCase:
 
     async def get_enriched_by_ingredient(self, ingr_name: str, ai_service=None) -> list[dict]:
         """
-        단일 성분으로 DUR 조회 + AI 동의어 확장 + 그룹화/번역
-        (기존 DrugService._get_kr_durs_async 역할)
+        단일 성분으로 DUR 조회 + AI 동의어 확장(타임아웃 1초 제한) + 그룹화/번역
         """
+        import asyncio
         if not ingr_name:
             return []
 
         # 1차 조회
         dur_list = await self._dur_repo.find_by_ingredient_name(ingr_name)
 
-        # AI 동의어 확장 (결과 없을 때)
+        # AI 동의어 확장 (결과 없을 때만, 최대 1초 제한)
         if not dur_list and ai_service and len(ingr_name.strip()) > 2:
-            logger.debug(f"DUR 직접 매칭 없음 '{ingr_name}'. AI 동의어 요청 중...")
-            ai_synonyms = await ai_service.get_synonyms(ingr_name)
-            logger.debug(f"AI 동의어: {ai_synonyms}")
-            if ai_synonyms:
-                dur_list = await self._dur_repo.find_by_ingredient_names(ai_synonyms)
+            try:
+                logger.debug(f"DUR 직접 매칭 없음 '{ingr_name}'. AI 동의어 요청 중 (timeout=1s)...")
+                ai_synonyms = await asyncio.wait_for(
+                    ai_service.get_synonyms(ingr_name),
+                    timeout=1.0  # 🔑 최대 1초 — 초과하면 동의어 없이 진행
+                )
+                logger.debug(f"AI 동의어: {ai_synonyms}")
+                if ai_synonyms:
+                    dur_list = await self._dur_repo.find_by_ingredient_names(ai_synonyms)
+            except asyncio.TimeoutError:
+                logger.warning(f"AI 동의어 조회 타임아웃 ('{ingr_name}'). 건너뜁니다.")
 
         return self._domain_svc.group_and_translate(dur_list)

@@ -15,5 +15,5 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token = AuthService.create_access_token(data={"sub": str(user.id)})
+    access_token = AuthService.create_access_token(data={"sub": str(user.get("id"))})
     return {"access_token": access_token, "token_type": "bearer"}

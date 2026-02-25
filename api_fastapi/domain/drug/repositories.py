@@ -47,7 +47,9 @@ class CacheRepository(ABC):
     async def set_symptom_cache(
         self, query_text: str, category: str,
         fda_data: list, dur_data: list,
-        final_answer: str, recommended_ingredients: list
+        final_answer: str, recommended_ingredients: list,
+        data_hash: Optional[str] = None,
+        logic_version: Optional[str] = None
     ) -> bool:
-        """결과 데이터 캐시 저장"""
+        """결과 데이터 캐시 저장 (무결성 검증용 해시/버전 포함)"""
         ...
