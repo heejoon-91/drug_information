@@ -1,7 +1,11 @@
 import os
+import re
 import asyncio
+import logging
 from supabase import create_client, Client
-from services.ai_service import AIService
+from services.ai_service_v2 import AIService
+
+logger = logging.getLogger(__name__)
 
 class SupabaseService:
     _client = None
@@ -15,7 +19,7 @@ class SupabaseService:
         key = os.environ.get("SUPABASE_KEY")
         
         if not url or not key:
-            print("Error: SUPABASE_URL and SUPABASE_KEY must be set in .env")
+            logger.error("SUPABASE_URL and SUPABASE_KEY must be set in .env")
             return None
             
         cls._client = create_client(url, key)
@@ -102,7 +106,7 @@ class SupabaseService:
         if not ingr_name: return []
         
         # Clean
-        target_name = ingr_name.strip().lower()
+        target_name = ingr_name.strip()
         if not target_name: return []
 
         # (Synonyms logic omitted for brevity, or can be added if needed. Supabase has limited "OR" querying flexibility compared to Django Q objects)
@@ -113,13 +117,20 @@ class SupabaseService:
 
         dur_list = []
         try:
-           response = client.table("dur_master") \
-               .select("*") \
-               .ilike("ingr_eng_name", f"%{target_name}%") \
-               .execute()
-           dur_list = response.data
+            is_korean = bool(re.search('[가-힣]', target_name))
+            if is_korean:
+                response = client.table("dur_master") \
+                    .select("*") \
+                    .ilike("ingr_kor_name", f"%{target_name}%") \
+                    .execute()
+            else:
+                response = client.table("dur_master") \
+                    .select("*") \
+                    .ilike("ingr_eng_name", f"%{target_name.lower()}%") \
+                    .execute()
+            dur_list = response.data
         except Exception as e:
-            print(f"[Supabase] Error: {e}")
+            logger.error(f"[Supabase] DUR query error for '{target_name}': {e}")
             return []
             
         # Group & Translation Logic (Copied from DrugService)
@@ -180,14 +191,100 @@ class SupabaseService:
         all_results = []
         for ingr in ingr_list:
             if not ingr: continue
+            target = ingr.strip()
             try:
-                response = client.table("dur_master") \
-                    .select("*") \
-                    .ilike("ingr_eng_name", f"%{ingr.strip()}%") \
-                    .execute()
+                if bool(re.search('[가-힣]', target)):
+                    response = client.table("dur_master").select("*").ilike("ingr_kor_name", f"%{target}%").execute()
+                else:
+                    response = client.table("dur_master").select("*").ilike("ingr_eng_name", f"%{target.lower()}%").execute()
+                    
                 if response.data:
                     all_results.extend(response.data)
             except Exception as e:
-                print(f"[Supabase] Batch Error: {e}")
+                logger.error(f"[Supabase] Batch DUR query error for '{target}': {e}")
                 
         return all_results
+
+    @classmethod
+    async def get_symptom_cache(cls, query_text: str):
+        """
+        AI가 정제한 해시키(예: headache_severe_none)를 기반으로 캐시된 응답 조회
+        """
+        client = cls.get_client()
+        if not client: return None
+        
+        try:
+            # Query by unique query_text matching
+            response = client.table("search_cache").select("*").eq("query_text", query_text).limit(1).execute()
+            if response.data and len(response.data) > 0:
+                logger.info(f"[Cache Hit] query='{query_text}'")
+                return response.data[0]
+        except Exception as e:
+            logger.error(f"[Cache] Error reading cache for '{query_text}': {e}")
+            
+        return None
+
+    @classmethod
+    async def set_symptom_cache(cls, query_text: str, category: str, fda_data: list, dur_data: list, final_answer: str, recommended_ingredients: list):
+        """
+        새로 생성된 응답을 DB에 캐싱 (백그라운드 비동기 처리를 권장)
+        """
+        client = cls.get_client()
+        if not client: return False
+        
+        try:
+            payload = {
+                "query_text": query_text,
+                "category": category,
+                "fda_data": fda_data if fda_data else [],
+                "dur_data": dur_data if dur_data else [],
+                "final_answer": final_answer,
+                "recommended_ingredients": recommended_ingredients if recommended_ingredients else []
+            }
+            client.table("search_cache").upsert(payload, on_conflict="query_text").execute()
+            logger.info(f"[Cache Saved] query='{query_text}'")
+            return True
+        except Exception as e:
+            logger.error(f"[Cache] Error saving cache for '{query_text}': {e}")
+            return False
+
+    @classmethod
+    async def get_roadmap_cache(cls, query_text: str):
+        """
+        성분명과 규격 기반 해시키(예: roadmap_500.0_acetaminophen_ibuprofen)로 
+        캐시된 US OTC Roadmap 매칭 및 약사 소통 카드를 조회
+        """
+        client = cls.get_client()
+        if not client: return None
+        
+        try:
+            response = client.table("roadmap_cache").select("*").eq("query_text", query_text).limit(1).execute()
+            if response.data and len(response.data) > 0:
+                logger.info(f"[Roadmap Cache Hit] query='{query_text}'")
+                return response.data[0]
+        except Exception as e:
+            logger.error(f"[Roadmap Cache] Error reading cache for '{query_text}': {e}")
+            
+        return None
+
+    @classmethod
+    async def set_roadmap_cache(cls, query_text: str, mapping_result: dict, pharmacist_card: dict, dosage_warnings: list):
+        """
+        새로 생성된 US OTC Roadmap 캐싱
+        """
+        client = cls.get_client()
+        if not client: return False
+        
+        try:
+            payload = {
+                "query_text": query_text,
+                "mapping_result": mapping_result if mapping_result else {},
+                "pharmacist_card": pharmacist_card if pharmacist_card else {},
+                "dosage_warnings": dosage_warnings if dosage_warnings else []
+            }
+            client.table("roadmap_cache").insert(payload).execute()
+            logger.info(f"[Roadmap Cache Saved] query='{query_text}'")
+            return True
+        except Exception as e:
+            logger.error(f"[Roadmap Cache] Error saving cache for '{query_text}': {e}")
+            return False

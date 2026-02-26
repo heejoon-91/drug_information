@@ -1,271 +1,357 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>증상 기반 성분 가이드 - {{ symptom }}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
-
-<body class="bg-gray-50 text-gray-900">
-    <div class="max-w-3xl mx-auto p-6">
-        <div class="mb-8">
-            <a href="/" class="text-blue-600 hover:text-blue-800 font-semibold flex items-center">
-                <i class="fas fa-arrow-left mr-2"></i> 다시 검색하기
-            </a>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6">
-            <div class="flex items-center mb-6">
-                <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-4">
-                    <i class="fas fa-stethoscope text-xl"></i>
-                </div>
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-800">증상 분석 결과</h1>
-                    <p class="text-gray-500">입력하신 증상: <span class="text-blue-600 font-bold">"{{ symptom }}"</span></p>
-                </div>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>증상 기반 성분 가이드 - {{ symptom }}</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+        />
+        <style>
+            .accordion-content {
+                max-height: 0;
+                overflow: hidden;
+                transition: max-height 0.3s ease;
+            }
+            .accordion-content.open {
+                max-height: 1000px;
+            }
+            .badge-safe {
+                background: #dcfce7;
+                color: #15803d;
+            }
+            .badge-unsafe {
+                background: #fee2e2;
+                color: #b91c1c;
+            }
+        </style>
+    </head>
+    <body class="bg-gray-50 text-gray-900">
+        <div class="max-w-3xl mx-auto p-6">
+            <!-- 뒤로가기 -->
+            <div class="mb-6">
+                <a
+                    href="/"
+                    class="text-blue-600 hover:text-blue-800 font-semibold flex items-center"
+                >
+                    <i class="fas fa-arrow-left mr-2"></i> 다시 검색하기
+                </a>
             </div>
 
-            <hr class="border-gray-100 mb-8">
-
-            <div class="prose prose-blue max-w-none">
-                <div class="flex items-start mb-4">
-                    <span class="inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mr-2 mt-1">AI
-                        Guide</span>
-                    <h2 class="text-lg font-bold text-gray-800">이런 성분들이 도움이 될 수 있습니다</h2>
-                </div>
-
-                <div class="bg-blue-50 rounded-xl p-6 text-gray-700 leading-relaxed text-base shadow-inner"
-                    style="white-space: pre-wrap;">{{ answer }}</div>
-            </div>
-        </div>
-
-        <div class="bg-orange-50 rounded-xl p-5 border border-orange-100 flex items-start">
-            <i class="fas fa-exclamation-triangle text-orange-400 mt-1 mr-3"></i>
-            <div class="text-xs text-orange-800 leading-5">
-                <p class="font-bold mb-1 underline">주의사항 및 면책 공고</p>
-                본 정보는 한국 식약처 DUR 데이터를 바탕으로 AI가 생성한 참고용 가이드입니다.
-                개별 환자의 상태(기저질환, 알레르기 등)에 따라 적합한 약물이 달라질 수 있으므로,
-                <strong>반드시 복용 전 미국 현지 약사 또는 의사에게 성분명을 제시하고 상담받으시기 바랍니다.</strong>
-            </div>
-        </div>
-
-        <!-- 팝업 열기 버튼 -->
-        <div class="mt-6 text-center">
-            <button onclick="openModal()"
-                class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 flex items-center justify-center mx-auto">
-                <i class="fas fa-exclamation-circle mr-2"></i> 상세 DUR & FDA 안전 정보 보기
-            </button>
-        </div>
-
-        <!-- 지도 영역 추가 -->
-        <div class="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100 pb-2">
-            <h2 class="text-xl font-bold mb-4 flex items-center text-green-600">
-                <i class="fas fa-map-marker-alt mr-2 text-green-500"></i> 내 근처 추천 약국
-            </h2>
-            <div id="pharmacy-map"
-                class="w-full h-80 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 shadow-inner">
-                <i class="fas fa-spinner fa-spin mr-2"></i> 지도를 불러오는 중입니다...
-            </div>
-            <ul id="pharmacy-list" class="mt-4 space-y-2 max-h-60 overflow-y-auto hidden pb-2"></ul>
-        </div>
-    </div>
-
-    <!-- DUR 상세 정보 모달 (Popup) -->
-    <div id="durModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl w-11/12 max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
-            <!-- 모달 헤더 -->
-            <div class="sticky top-0 bg-white border-b border-gray-100 p-6 flex justify-between items-center">
-                <h2 class="text-2xl font-bold text-gray-800">💊 성분별 상세 안전 정보 (DUR & FDA)</h2>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <!-- 모달 내용 -->
-            <div class="p-6 space-y-8">
-                {% if dur_details %}
-                {% for item in dur_details %}
-                <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
-                    <div class="flex items-center mb-4">
-                        <span
-                            class="bg-blue-100 text-blue-800 text-sm font-bold px-3 py-1 rounded-full mr-3">Ingredient</span>
-                        <h3 class="text-xl font-bold text-gray-900">{{ item.ingredient }}</h3>
-                        {% if item.kr_durs %}
-                        <span class="text-sm text-gray-500 ml-2">({{ item.kr_durs[0].kor_name }})</span>
-                        {% endif %}
+            <!-- 헤더 + AI 전체 요약 -->
+            <div
+                class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6"
+            >
+                <div class="flex items-center mb-5">
+                    <div
+                        class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mr-4"
+                    >
+                        <i class="fas fa-stethoscope text-xl"></i>
                     </div>
-
-                    <!-- Grid for Split View -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- Left: KR DUR -->
-                        <div class="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                            <h4 class="font-bold text-red-600 mb-3 flex items-center">
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg"
-                                    class="w-6 h-4 mr-2 border">
-                                한국 DUR (식약처)
-                            </h4>
-                            {% if item.kr_durs %}
-                            <ul class="space-y-3">
-                                {% for dur in item.kr_durs %}
-                                <li class="text-sm">
-                                    <span
-                                        class="inline-block bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded font-bold mb-1">{{
-                                        dur.type }}</span>
-                                    <p class="text-gray-700">{{ dur.warning }}</p>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                            {% else %}
-                            <p class="text-gray-400 text-sm">등록된 주의사항이 없습니다.</p>
-                            {% endif %}
-                        </div>
-
-                        <!-- Right: FDA Warnings -->
-                        <div class="bg-white p-4 rounded-lg border border-gray-100 shadow-sm">
-                            <h4 class="font-bold text-blue-600 mb-3 flex items-center">
-                                <img src="https://upload.wikimedia.org/wikipedia/en/a/a4/Flag_of_the_United_States.svg"
-                                    class="w-6 h-4 mr-2 border">
-                                미국 FDA (Warnings)
-                            </h4>
-                            {% if item.fda_warning %}
-                            <p class="text-xs text-gray-600 leading-relaxed max-h-40 overflow-y-auto">
-                                {{ item.fda_warning }}
-                            </p>
-                            {% else %}
-                            <p class="text-gray-400 text-sm">FDA 경고 문구가 발견되지 않았습니다.</p>
-                            {% endif %}
-                        </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-800">
+                            증상 분석 결과
+                        </h1>
+                        <p class="text-gray-500">
+                            입력하신 증상:
+                            <span class="text-blue-600 font-bold"
+                                >"{{ symptom }}"</span
+                            >
+                        </p>
                     </div>
                 </div>
-                {% endfor %}
-                {% else %}
-                <div class="text-center py-10 text-gray-500">
-                    표시할 상세 데이터가 없습니다.<br>
-                    (FDA 또는 DUR 데이터를 불러오지 못했습니다.)
+
+                {% if answer %}
+                <div
+                    class="bg-blue-50 rounded-xl p-5 text-gray-700 leading-relaxed text-base shadow-inner mb-0"
+                >
+                    <span
+                        class="inline-block bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded mr-2"
+                        >AI 종합 안내</span
+                    >
+                    {{ answer }}
                 </div>
                 {% endif %}
             </div>
 
-            <div class="p-6 border-t border-gray-100 bg-gray-50 text-right">
-                <button onclick="closeModal()"
-                    class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-6 rounded-lg transition">
-                    닫기
-                </button>
+            <!-- 성분별 카드 목록 -->
+            {% if ingredients_data %}
+            <div class="space-y-5 mb-6">
+                {% for ing in ingredients_data %}
+                <div
+                    class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+                >
+                    <!-- 카드 헤더 -->
+                    <div
+                        class="flex items-center justify-between px-6 py-4 border-b border-gray-100"
+                    >
+                        <div class="flex items-center gap-3">
+                            {% if ing.can_take %}
+                            <span
+                                class="badge-safe text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1"
+                            >
+                                <i class="fas fa-check-circle"></i> 복용 가능
+                            </span>
+                            {% else %}
+                            <span
+                                class="badge-unsafe text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1"
+                            >
+                                <i class="fas fa-times-circle"></i> 주의 필요
+                            </span>
+                            {% endif %}
+                            <h2 class="text-lg font-bold text-gray-800">
+                                {{ ing.name }}
+                            </h2>
+                        </div>
+                        <!-- DUR 경고 유형 태그 -->
+                        <div class="flex flex-wrap gap-1 justify-end">
+                            {% for wtype in ing.dur_warning_types %}
+                            <span
+                                class="bg-orange-100 text-orange-700 text-[11px] font-semibold px-2 py-0.5 rounded"
+                                >{{ wtype }}</span
+                            >
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- 판단 이유 -->
+                    <div
+                        class="px-6 py-3 bg-gray-50 text-sm text-gray-600 border-b border-gray-100"
+                    >
+                        <i class="fas fa-info-circle text-blue-400 mr-1"></i> {{
+                        ing.reason }}
+                    </div>
+
+                    <!-- 제품 목록 (복용 가능한 경우) -->
+                    {% if ing.can_take and ing.products %}
+                    <div class="px-6 pt-4 pb-2">
+                        <p
+                            class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3"
+                        >
+                            <i class="fas fa-pills mr-1 text-indigo-400"></i>
+                            미국 OTC 추천 제품
+                        </p>
+                        <!-- 상위 2개 항상 표시 -->
+                        <ul class="space-y-2">
+                            {% for prod in ing.products[:2] %}
+                            <li
+                                class="flex items-start justify-between bg-indigo-50 rounded-lg px-4 py-3"
+                            >
+                                <div>
+                                    <span
+                                        class="font-bold text-indigo-900 text-sm"
+                                        >{{ prod.brand_name }}</span
+                                    >
+                                    {% if prod.active_ingredient and
+                                    prod.active_ingredient != 'Unknown' %}
+                                    <span class="text-indigo-500 text-xs ml-2"
+                                        >({{ prod.active_ingredient }})</span
+                                    >
+                                    {% endif %}
+                                    <p
+                                        class="text-gray-600 text-xs mt-0.5 truncate max-w-xs"
+                                        title="{{ prod.purpose }}"
+                                    >
+                                        {{ prod.purpose }}
+                                    </p>
+                                </div>
+                                <span
+                                    class="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-0.5 rounded ml-3 whitespace-nowrap"
+                                    >TOP {{ loop.index }}</span
+                                >
+                            </li>
+                            {% endfor %}
+                        </ul>
+
+                        <!-- 나머지 제품 아코디언 -->
+                        {% if ing.products|length > 2 %} {% set accordion_id =
+                        "acc-" ~ loop.index %}
+                        <button
+                            onclick="toggleAccordion('{{ accordion_id }}')"
+                            class="mt-2 w-full text-center text-blue-600 hover:text-blue-800 text-sm font-semibold py-2 flex items-center justify-center gap-1 transition-colors"
+                        >
+                            나머지 {{ ing.products|length - 2 }}개 제품 더 보기
+                            <i
+                                class="fas fa-chevron-down text-xs"
+                                id="{{ accordion_id }}-icon"
+                            ></i>
+                        </button>
+                        <div id="{{ accordion_id }}" class="accordion-content">
+                            <ul class="space-y-2 pb-3 pt-1">
+                                {% for prod in ing.products[2:] %}
+                                <li
+                                    class="flex items-start justify-between bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-100"
+                                >
+                                    <div>
+                                        <span
+                                            class="font-semibold text-gray-700 text-sm"
+                                            >{{ prod.brand_name }}</span
+                                        >
+                                        {% if prod.active_ingredient and
+                                        prod.active_ingredient != 'Unknown' %}
+                                        <span class="text-gray-400 text-xs ml-2"
+                                            >({{ prod.active_ingredient
+                                            }})</span
+                                        >
+                                        {% endif %}
+                                        <p
+                                            class="text-gray-500 text-xs mt-0.5 truncate max-w-xs"
+                                            title="{{ prod.purpose }}"
+                                        >
+                                            {{ prod.purpose }}
+                                        </p>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% elif ing.can_take %}
+                    <div class="px-6 py-4 text-sm text-gray-400">
+                        <i class="fas fa-box-open mr-1"></i> 검색된 OTC 제품이
+                        없습니다.
+                    </div>
+                    {% endif %}
+
+                    <!-- DUR 상세 (주의 필요 성분 또는 경고가 있는 경우) -->
+                    {% if ing.kr_durs or ing.fda_warning %} {% set dur_id =
+                    "dur-" ~ loop.index %}
+                    <div class="border-t border-gray-100">
+                        <button
+                            onclick="toggleAccordion('{{ dur_id }}')"
+                            class="w-full px-6 py-3 text-sm text-gray-500 hover:text-gray-700 flex items-center justify-between font-medium transition-colors"
+                        >
+                            <span
+                                ><i
+                                    class="fas fa-shield-alt mr-1 text-red-400"
+                                ></i>
+                                KR·US 안전 정보 상세</span
+                            >
+                            <i
+                                class="fas fa-chevron-down text-xs"
+                                id="{{ dur_id }}-icon"
+                            ></i>
+                        </button>
+                        <div id="{{ dur_id }}" class="accordion-content">
+                            <div
+                                class="grid grid-cols-1 md:grid-cols-2 gap-4 px-6 pb-5"
+                            >
+                                <!-- 한국 DUR -->
+                                <div
+                                    class="bg-white rounded-lg border border-gray-100 p-4 shadow-sm"
+                                >
+                                    <h4
+                                        class="font-bold text-red-600 mb-2 flex items-center text-sm"
+                                    >
+                                        <img
+                                            src="https://upload.wikimedia.org/wikipedia/commons/0/09/Flag_of_South_Korea.svg"
+                                            class="w-5 h-3 mr-2 border"
+                                        />
+                                        한국 DUR (식약처)
+                                    </h4>
+                                    {% if ing.kr_durs %}
+                                    <ul class="space-y-2">
+                                        {% for dur in ing.kr_durs %}
+                                        <li class="text-xs">
+                                            <span
+                                                class="inline-block bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold mb-1"
+                                                >{{ dur.type }}</span
+                                            >
+                                            <p class="text-gray-600">
+                                                {{ dur.warning }}
+                                            </p>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% else %}
+                                    <p class="text-gray-400 text-xs">
+                                        등록된 주의사항이 없습니다.
+                                    </p>
+                                    {% endif %}
+                                </div>
+                                <!-- 미국 FDA -->
+                                <div
+                                    class="bg-white rounded-lg border border-gray-100 p-4 shadow-sm"
+                                >
+                                    <h4
+                                        class="font-bold text-blue-600 mb-2 flex items-center text-sm"
+                                    >
+                                        <img
+                                            src="https://upload.wikimedia.org/wikipedia/en/a/a4/Flag_of_the_United_States.svg"
+                                            class="w-5 h-3 mr-2 border"
+                                        />
+                                        미국 FDA (Warnings)
+                                    </h4>
+                                    {% if ing.fda_warning %}
+                                    <p
+                                        class="text-xs text-gray-600 leading-relaxed"
+                                    >
+                                        {{ ing.fda_warning }}
+                                    </p>
+                                    {% else %}
+                                    <p class="text-gray-400 text-xs">
+                                        FDA 경고 문구가 없습니다.
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 데이터 없을 때 폴백 -->
+            {% elif answer %}
+            <div
+                class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-6"
+            >
+                <div
+                    class="bg-blue-50 rounded-xl p-5 text-gray-700 leading-relaxed text-base"
+                    style="white-space: pre-wrap"
+                >
+                    {{ answer }}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 면책 공고 -->
+            <div
+                class="bg-orange-50 rounded-xl p-5 border border-orange-100 flex items-start mb-6"
+            >
+                <i
+                    class="fas fa-exclamation-triangle text-orange-400 mt-1 mr-3"
+                ></i>
+                <div class="text-xs text-orange-800 leading-5">
+                    <p class="font-bold mb-1 underline">
+                        주의사항 및 면책 공고
+                    </p>
+                    본 정보는 한국 식약처 DUR 데이터 및 FDA 정보를 바탕으로 AI가
+                    생성한 참고용 가이드입니다. 개별 환자의 상태에 따라 적합한
+                    약물이 달라질 수 있으므로,
+                    <strong
+                        >반드시 복용 전 미국 현지 약사 또는 의사에게 성분명을
+                        제시하고 상담받으시기 바랍니다.</strong
+                    >
+                </div>
             </div>
         </div>
-    </div>
 
-    <script>
-        function openModal() {
-            document.getElementById('durModal').classList.remove('hidden');
-            document.body.style.overflow = 'hidden'; // 스크롤 방지
-        }
-        function closeModal() {
-            document.getElementById('durModal').classList.add('hidden');
-            document.body.style.overflow = 'auto';
-        }
-
-        // DUR 정보가 있으면 페이지 로드 시 자동으로 팝업 열기
-        {% if dur_details %}
-        window.addEventListener('load', function () {
-            setTimeout(openModal, 300); // 자연스러운 등장을 위해 약간의 지연
-        });
-        {% endif %}
-
-        // 구글 맵 Pharmacy 로딩 로직
-        let map;
-        function initMap(lat, lng) {
-            const userLoc = { lat: lat, lng: lng };
-            const mapElement = document.getElementById("pharmacy-map");
-            if (!mapElement) return;
-            mapElement.innerHTML = ""; // 엘리먼트 초기화
-            mapElement.classList.remove("flex", "items-center", "justify-center", "text-gray-500");
-
-            map = new google.maps.Map(mapElement, {
-                zoom: 15,
-                center: userLoc,
-            });
-
-            // 내 위치 마커 추가 (파란색 점)
-            new google.maps.Marker({
-                position: userLoc,
-                map: map,
-                title: "현재 내 위치",
-                icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-            });
-
-            // 백엔드 API 호출을 통해 주변 약국 정보 획득
-            fetch(`/api/pharmacies?lat=${lat}&lng=${lng}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === "success" && data.results && data.results.length > 0) {
-                        const listElement = document.getElementById("pharmacy-list");
-                        listElement.classList.remove("hidden");
-
-                        data.results.forEach(place => {
-                            // 지도 위에 약국 마커 표시
-                            const marker = new google.maps.Marker({
-                                position: { lat: place.geometry.location.lat, lng: place.geometry.location.lng },
-                                map: map,
-                                title: place.name
-                            });
-
-                            const infoWindow = new google.maps.InfoWindow({
-                                content: `<div class='p-2'><strong class='text-sm text-blue-600'>${place.name}</strong><br><span class='text-xs text-gray-600'>${place.vicinity}</span></div>`
-                            });
-                            marker.addListener("click", () => {
-                                infoWindow.open(map, marker);
-                            });
-
-                            // 약국 리스트 UI 추가
-                            const li = document.createElement("li");
-                            li.className = "flex justify-between items-center text-sm p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition shadow-sm cursor-pointer";
-                            let ratingHtml = place.rating ? `<i class="fas fa-star text-yellow-500"></i> ${place.rating}` : '평점 없음';
-                            li.innerHTML = `
-                                <div class="font-bold text-gray-800">${place.name} <span class="text-xs font-normal text-gray-500 block mt-1"><i class="fas fa-map-pin text-gray-400"></i> ${place.vicinity}</span></div>
-                                <div class="text-green-600 font-semibold text-xs whitespace-nowrap">${ratingHtml}</div>
-                            `;
-                            // 클릭하면 지도 중앙 이동
-                            li.addEventListener("click", () => {
-                                map.panTo({ lat: place.geometry.location.lat, lng: place.geometry.location.lng });
-                                map.setZoom(17);
-                                infoWindow.open(map, marker);
-                            });
-                            listElement.appendChild(li);
-                        });
-                    } else {
-                        document.getElementById("pharmacy-map").style.height = "auto";
-                        document.getElementById("pharmacy-map").classList.remove("items-center", "justify-center");
-                        document.getElementById("pharmacy-map").innerHTML = "<div class='p-4 text-left w-full'><p class='font-bold text-red-600 mb-2'>주변에 약국이 없거나 API 오류입니다.</p><pre class='text-xs bg-gray-200 p-2 overflow-x-auto text-gray-800 rounded'>" + JSON.stringify(data, null, 2) + "</pre></div>";
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.getElementById("pharmacy-map").innerHTML = "<p class='text-red-500 flex items-center justify-center p-10'>네트워크 에러: " + err + "</p>";
-                });
-        }
-
-        window.addEventListener('load', () => {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        initMap(position.coords.latitude, position.coords.longitude);
-                    },
-                    (error) => {
-                        const mapEl = document.getElementById("pharmacy-map");
-                        if (mapEl) mapEl.innerHTML = "<div class='text-center p-10'><i class='fas fa-exclamation-triangle text-orange-400 text-3xl mb-3'></i><p class='text-gray-600'>동적 지도를 보려면 <b>위치 권한</b>을 허용해주세요.</p></div>";
-                    }
-                );
-            } else {
-                const mapEl = document.getElementById("pharmacy-map");
-                if (mapEl) mapEl.innerHTML = "이 브라우저는 위치 기반 서비스를 지원하지 않습니다.";
+        <script>
+            function toggleAccordion(id) {
+                const el = document.getElementById(id);
+                const icon = document.getElementById(id + "-icon");
+                const isOpen = el.classList.contains("open");
+                el.classList.toggle("open", !isOpen);
+                if (icon) {
+                    icon.style.transform = isOpen ? "" : "rotate(180deg)";
+                    icon.style.transition = "transform 0.3s ease";
+                }
             }
-        });
-    </script>
-    <script src="https://maps.googleapis.com/maps/api/js?key={{ maps_key }}&libraries=places"></script>
-</body>
-
+        </script>
+    </body>
 </html>

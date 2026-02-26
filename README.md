@@ -1,91 +1,149 @@
-# Global Drug Safety Intelligence Chatbot
+# 🌐 Global Drug Safety Intelligence
 
-이 프로젝트는 **한국 DUR(의약품안전사용서비스)** 정보와 **미국 FDA(식품의약국)**의 최신 의약품 안전 정보를 결합하여, 사용자에게 포괄적인 약물 안전 정보를 제공하는 지능형 챗봇 서비스입니다.
-
-## 🚀 주요 기능 (Key Features)
-
-*   **지능형 의도 분류 (AI Intent Classification)**: 사용자 질문을 제품/증상/일반 의학 상식으로 자동 분류.
-*   **하이브리드 데이터 검색 (Hybrid Data Retrieval)**: FDA 실시간 데이터와 한국 DUR DB를 결합하여 제공.
-*   **실시간 안전 정보 통합**: 한/미 의약품 안전 정보를 통합하여 팝업으로 경고 제공.
-
-## 🛠️ 기술 스택 (Tech Stack)
-
-*   **Backend**: Django (Admin/ORM), FastAPI (AI/Service)
-*   **AI**: OpenAI GPT-4o-mini
-*   **Database**: MySQL
-*   **External API**: OpenFDA, Korea DUR API
+해외 체류 중인 한국인을 위한 **증상 기반 OTC 의약품 안전 가이드** 시스템입니다.  
+미국 FDA 데이터와 한국 식약처 DUR(의약품 사용 검토) 데이터를 결합하여, 사용자의 증상 및 건강 프로파일을 고려한 맞춤형 의약품 정보를 AI로 제공합니다.
 
 ---
 
-## ⚡ 설치 및 실행 가이드 (Setup Guide)
+## 🏗️ 프로젝트 구조
 
-프로젝트를 실행하기 위해 아래 단계들을 순서대로 따라주세요.
+```
+drug_information/
+│
+├── api_fastapi/              # 메인 FastAPI 서버 (AI 파이프라인)
+│   ├── main2.py              # ★ 서버 진입점 (uvicorn 실행 대상)
+│   │
+│   ├── graph_agent/          # LangGraph AI 워크플로우
+│   │   ├── builder_v2.py     #   그래프 노드 연결 및 컴파일
+│   │   ├── nodes_v2.py       #   각 노드 함수 (분류→FDA→DUR→답변 생성)
+│   │   └── state.py          #   그래프 공유 상태 스키마
+│   │
+│   ├── services/             # 외부 API 및 비즈니스 로직
+│   │   ├── ai_service_v2.py  #   OpenAI GPT 연동 (분류·답변·번역)
+│   │   ├── drug_service.py   #   FDA API 조회 + KR DUR DB 검색
+│   │   ├── supabase_service.py #  Supabase DUR 데이터 조회 및 캐싱
+│   │   ├── map_service.py    #   미국 OTC 제품 검색 (FDA 활용)
+│   │   ├── auth_service.py   #   JWT 인증
+│   │   └── user_service.py   #   사용자 건강 프로파일 조회
+│   │
+│   ├── routers/              # FastAPI 라우터
+│   │   ├── auth_router.py    #   /auth/* (로그인·회원가입)
+│   │   ├── drug_router.py    #   /api/drugs/* (의약품 검색)
+│   │   └── user_router.py    #   /api/users/* (프로파일 관리)
+│   │
+│   ├── prompts/              # LLM 프롬프트 템플릿
+│   │   ├── system_prompts.py #   의도 분류(Intent) 프롬프트
+│   │   └── answer_prompts_v2.py # 성분별 안전 분류·답변 생성 프롬프트
+│   │
+│   └── templates/            # Jinja2 HTML 템플릿
+│       └── symptom_result.html # 증상 검색 결과 페이지
+│
+├── backend_django/           # Django ORM (사용자 인증 + DUR DB 관리)
+│   ├── core/                 #   Django 설정 (settings.py)
+│   └── drugs/                #   DurMaster, DrugPermitInfo 모델 정의
+│
+├── data_pipeline/            # 데이터 수집 및 DB 동기화 스크립트
+│   ├── dur_unified_collector.py    # 공공API → MySQL DUR 데이터 수집
+│   ├── drug_enrichment_collector.py # 의약품 성분명 보강 수집
+│   ├── sync_to_supabase.py         # MySQL → Supabase 동기화
+│   └── supabase_schema.sql         # Supabase 테이블 DDL
+│
+├── .env                      # 환경 변수 (★ repo에 포함 안 됨 → 직접 생성 필요)
+├── requirements.txt          # Python 의존성
+└── README.md
+```
 
-### 1. 필수 요구사항 (Prerequisites)
-*   Python 3.10 이상
-*   MySQL 서버 (로컬 또는 원격)
-*   Git
+---
 
-### 2. 프로젝트 클론 및 패키지 설치
+## ⚙️ AI 파이프라인 흐름
+
+```
+사용자 입력 (증상 텍스트)
+    │
+    ▼
+[classify_node]  → GPT가 의도 분류 (증상 추천 / 제품 검색 / 일반 질문)
+    │
+    ▼
+[retrieve_fda_node]  → FDA API에서 해당 증상의 OTC 성분 목록 수집
+    │                   실패 시 AI 동의어 확장 → 재검색 → AI 직접 추천 순으로 폴백
+    ▼
+[retrieve_dur_node]  → Supabase에서 성분별 KR DUR 정보 조회
+    │
+    ▼
+[generate_symptom_answer_node]
+    ├─ GPT: 성분별 can_take 판단 + 이유 + DUR 경고 유형 분류
+    └─ FDA: can_take=true 성분에 대해 OTC 브랜드 제품 병렬 조회
+    │
+    ▼
+[symptom_result.html] → 성분 카드 UI (안전 배지 / 제품명 아코디언)
+```
+
+---
+
+### 1. Python 가상환경 생성 및 의존성 설치
+
 ```bash
-# 1. 프로젝트 다운로드
-git clone [repository_url]
-cd drug_information
-
-# 2. 가상환경 생성 및 활성화
 python -m venv venv
 # Windows
 venv\Scripts\activate
-# Mac/Linux
+# macOS/Linux
 source venv/bin/activate
 
 # 3. 필수 패키지 설치
 pip install -r requirements.txt
 ```
 
-### 3. 환경 변수 설정 (.env)
-프로젝트 루트 디렉토리(`drug_information/`)에 `.env` 파일을 생성하고 아래 내용을 작성하세요.
+### 2. MySQL 데이터베이스 생성
 
-```ini
-# --- [필수] API 키 설정 ---
-# OpenAI API 키 (챗봇 기능용)
+```sql
+CREATE DATABASE drug_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'drug'@'localhost' IDENTIFIED BY 'drug';
+GRANT ALL PRIVILEGES ON drug_db.* TO 'drug'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+> `DB_NAME`, `DB_USER`, `DB_PASSWORD`는 아래 `.env` 설정과 일치해야 합니다.
+
+### 3. `.env` 파일 생성
+
+루트(`drug_information/`) 에 `.env` 파일을 생성하세요.
+
+```env
+# ★ 필수 - OpenAI
 OPENAI_API_KEY=sk-proj-...
 
-# 공공데이터포털 DUR API 키 (데이터 수집용, Decoding된 키 입력 권장)
-KR_API_KEY=your_decoding_key_here
+# ★ 필수 - Supabase (DUR 데이터 저장소)
+SUPABASE_URL=https://<your-project>.supabase.co/
+SUPABASE_KEY=<your-supabase-anon-key>
 
-# OpenFDA API 키 (미국 의약품 데이터용)
-OPENFDA_API_KEY=your_openfda_key_here
-
-# LangSmith API 키 (LangChain 모니터링용, 선택)
-LANGSMITH_API_KEY=your_langsmith_key_here
-
-# --- [선택] 데이터베이스 설정 (기본값: 로컬 MySQL) ---
+# ★ 필수 - MySQL (Django ORM)
 DB_NAME=drug_db
-DB_USER=root
-DB_PASSWORD=your_password
+DB_USER=drug
+DB_PASSWORD=drug
 DB_HOST=127.0.0.1
 DB_PORT=3306
 
-# --- [필수] Supabase 설정 (데이터 동기화용) ---
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_anon_key
+# 선택 - 한국 공공데이터포털 DUR API 키 (데이터 수집 시에만 필요)
+KR_API_KEY=<your-kr-api-key>
 
-# --- [선택] Django 시크릿 키 (배포 시 변경 필수) ---
-DJANGO_SECRET_KEY=django-insecure-...
+# 선택 - Django 시크릿 키 (배포 시 반드시 변경)
+DJANGO_SECRET_KEY=django-insecure-replace-this-in-production
 
+# 선택 - LangSmith 모니터링
+LANGSMITH_API_KEY=lsv2_pt_...
 ```
 
-### 4. 데이터베이스 구축 (Database Setup)
+### 4. Supabase 테이블 생성
 
-**Step 1: MySQL 데이터베이스 생성**
-MySQL에 접속하여 빈 데이터베이스를 생성합니다. (기본값: `drug_db`)
-```sql
-CREATE DATABASE drug_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+[Supabase 콘솔](https://supabase.com) → SQL Editor에서 아래 파일을 실행하세요.
+
+```bash
+# 파일 위치
+data_pipeline/supabase_schema.sql
 ```
 
-**Step 2: 테이블 생성 (Django Migration)**
-Django의 마이그레이션 기능을 이용해 테이블 스키마를 생성합니다.
+### 5. Django 마이그레이션 (사용자 인증 DB 구성)
+
 ```bash
 cd backend_django
 python manage.py makemigrations
@@ -99,26 +157,64 @@ cd ..
 *   시간이 다소 소요될 수 있습니다.
 
 ```bash
-# 프로젝트 루트에서 실행
-python data_pipeline/dur_unified_collector.py
+cd data_pipeline
+
+# 한국 DUR 데이터 수집 → MySQL 저장
+python dur_unified_collector.py
+
+# 의약품 성분명 보강
+python drug_enrichment_collector.py
+
+# MySQL → Supabase 동기화
+python sync_to_supabase.py
 ```
 
-### 5. 서버 실행 (Run Server)
-모든 설정이 완료되었습니다. FastAPI 서버를 실행하세요.
+> **처음 Supabase를 세팅하는 경우**: KR API 키 없이도 Supabase에 DUR 데이터를 직접 CSV로 import할 수 있습니다. [공공데이터포털](http://www.data.go.kr)에서 DUR 품목정보 데이터를 다운받아 활용하세요.
+
+### 6. 서버 실행
 
 ```bash
-# 프로젝트 루트에서 실행
-python api_fastapi/main.py
+cd api_fastapi
+uvicorn main2:app --reload --port 8000
 ```
-*   **웹 접속**: `http://127.0.0.1:8000`
-*   **테스트**: 검색창에 "머리 아파" 또는 "타이레놀"을 입력해보세요.
+
+브라우저에서 `http://localhost:8000` 접속
 
 ---
 
-## � 문서 (Documentation)
-더 자세한 내용은 아래 문서를 참고하세요.
+## 🔑 환경 변수 요약
 
-*   [📂 **프로젝트 구조 (Project Structure)**](./project_structure.md): 디렉토리 및 파일 역할 설명
-*   [🗄️ **DB 스키마 (Database Schema)**](./SCHEMA.md): 테이블 및 컬럼 상세 명세
-*   [⚙️ **설정 가이드 (Configuration Guide)**](./chatbot_config_guide.md): 챗봇 성격 및 파라미터 변경 방법
-*   [🔄 **데이터 흐름 (Data Flow)**](./chatbot_data_flow.md): 사용자 입력부터 답변까지의 처리 과정
+| 변수명              | 필수 여부           | 설명                                 |
+| ------------------- | ------------------- | ------------------------------------ |
+| `OPENAI_API_KEY`    | ★ 필수              | GPT-4o-mini 호출용                   |
+| `SUPABASE_URL`      | ★ 필수              | Supabase 프로젝트 URL                |
+| `SUPABASE_KEY`      | ★ 필수              | Supabase anon public key             |
+| `DB_NAME`           | ★ 필수              | MySQL 데이터베이스명                 |
+| `DB_USER`           | ★ 필수              | MySQL 사용자                         |
+| `DB_PASSWORD`       | ★ 필수              | MySQL 비밀번호                       |
+| `DB_HOST`           | 필수                | DB 호스트 (기본: `127.0.0.1`)        |
+| `DB_PORT`           | 필수                | DB 포트 (기본: `3306`)               |
+| `KR_API_KEY`        | 데이터 수집 시 필요 | 공공데이터포털 DUR API 키            |
+| `DJANGO_SECRET_KEY` | 선택                | Django 시크릿 키 (배포 시 필수 변경) |
+| `LANGSMITH_API_KEY` | 선택                | LangGraph 파이프라인 모니터링        |
+
+---
+
+## ️ 기술 스택
+
+| 분류          | 기술                                           |
+| ------------- | ---------------------------------------------- |
+| API 서버      | FastAPI + Uvicorn                              |
+| AI 워크플로우 | LangGraph (비순환 그래프 파이프라인)           |
+| LLM           | OpenAI GPT-4o-mini                             |
+| 데이터베이스  | MySQL (Django ORM) + Supabase (PostgreSQL)     |
+| 인증          | JWT (python-jose)                              |
+| 외부 API      | 미국 FDA Open API, 한국 공공데이터포털 DUR API |
+
+---
+
+## 📝 주의사항
+
+- 본 시스템은 **참고용 정보 제공 목적**이며, 의료 진단이나 처방을 대체하지 않습니다.
+- 복용 전 반드시 현지 약사 또는 의사에게 상담받으시기 바랍니다.
+- `.env` 파일과 `db.sqlite3`, `*.pyc` 파일은 `.gitignore`에 포함하세요.
