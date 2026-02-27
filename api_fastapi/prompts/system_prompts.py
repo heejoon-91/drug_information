@@ -64,7 +64,13 @@ Analyze the user's question and determine the appropriate search strategy.
    - 화상 → "burn"
    - 모기에 물렸다 → "insect bite"
    - 눈이 말겁겉하다 → "dry eye"
-5. For "general_medical", set keyword to "none" or null.
+5. For Korean symptom words, ALWAYS convert informal/descriptive Korean to standard Korean medical terms for 'keyword_kr':
+   - "머리 아파", "머리가 띵해" → "두통"
+   - "속이 쓰려", "위가 아파" → "속쓰림" or "위염"
+   - "배가 아파", "똥이 안나와" → "복통" or "변비"
+   - "콧물 나", "코가 막혀" → "비염" or "코막힘"
+   - "기침 나", "목이 아파" → "기침" or "인후통"
+6. For "general_medical", set keyword to "none" or null.
 
 [Invalid/Unrelated Query Handling]
 If the input is:
@@ -83,13 +89,14 @@ Return ONLY a JSON object with no additional text:
 {{
   "category": "symptom_recommendation|product_request|general_medical|invalid",
   "keyword": "search term in English or 'none'",
+  "keyword_kr": "search term in Korean (standard medical term, e.g., 두통) or 'none'",
   "cache_key": "normalized_key_for_caching (e.g., headache_severe_splitting)"
 }}
 
 Examples:
-- "타이레놀의 효능은?" -> {{"category": "product_request", "keyword": "Tylenol", "cache_key": "product_tylenol"}}
-- "두통에 좋은 약" -> {{"category": "symptom_recommendation", "keyword": "headache", "cache_key": "headache_moderate_none"}}
-- "넘어져서 다리가 까졌어" -> {{"category": "symptom_recommendation", "keyword": "wound", "cache_key": "wound_skin_abrasion"}}
+- "타이레놀의 효능은?" -> {{"category": "product_request", "keyword": "Tylenol", "keyword_kr": "타이레놀", "cache_key": "product_tylenol"}}
+- "두통에 좋은 약" -> {{"category": "symptom_recommendation", "keyword": "headache", "keyword_kr": "두통", "cache_key": "headache_moderate_none"}}
+- "넘어져서 다리가 까졌어" -> {{"category": "symptom_recommendation", "keyword": "wound", "keyword_kr": "찰과상", "cache_key": "wound_skin_abrasion"}}
 - "모기에 물렸는데 너무 가려워" -> {{"category": "symptom_recommendation", "keyword": "insect bite", "cache_key": "insect_bite_itch"}}
 - "화상 입었는데 무슨 약 바르면 돼?" -> {{"category": "symptom_recommendation", "keyword": "burn", "cache_key": "burn_skin_moderate"}}
 - "발목을 삐었어" -> {{"category": "symptom_recommendation", "keyword": "sprain", "cache_key": "ankle_sprain_moderate"}}

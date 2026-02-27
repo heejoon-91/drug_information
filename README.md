@@ -64,18 +64,19 @@ drug_information/
 [classify_node]  → GPT가 의도 분류 (증상 추천 / 제품 검색 / 일반 질문)
     │
     ▼
-[retrieve_fda_node]  → FDA API에서 해당 증상의 OTC 성분 목록 수집
-    │                   실패 시 AI 동의어 확장 → 재검색 → AI 직접 추천 순으로 폴백
+[retrieve_ingredients] → 1. 국내 DB 효능 검색 (우선순위 1)
+    │                  2. AI 성분 필터링 (불필요한 기침약 등 제거)
+    │                  3. 결과 부족 시 FDA 검색 및 AI 추천 폴백
     ▼
 [retrieve_dur_node]  → Supabase에서 성분별 KR DUR 정보 조회
-    │
+    │                  + FDA 원문 경고 데이터 병렬 수집
     ▼
 [generate_symptom_answer_node]
-    ├─ GPT: 성분별 can_take 판단 + 이유 + DUR 경고 유형 분류
-    └─ FDA: can_take=true 성분에 대해 OTC 브랜드 제품 병렬 조회
+    ├─ GPT: 성분별 추천/주의/금지 분류 + 상세 사유 작성
+    └─ FDA: 추천 성분에 대해 미국 현지 OTC 제품명 병렬 조회
     │
     ▼
-[symptom_result.html] → 성분 카드 UI (안전 배지 / 제품명 아코디언)
+[symptom_result.html] → 성분 카드 UI (안전 배지 / 복용 가이드 / 현지 제품 정보)
 ```
 
 ---

@@ -145,7 +145,7 @@ class FdaClient:
             key=lambda x: (-ingr_counts[x], x)
         )
         
-        return sorted_ingrs[:5]
+        return sorted_ingrs[:20]
 
     async def get_warnings_by_ingredient(self, ingr_name: str) -> str | None:
         """성분명으로 FDA 경고(Warnings) 정보 조회"""
@@ -207,6 +207,47 @@ class FdaClient:
             }
         
         return {"ingredient": ingredient, "products": [], "count": 0}
+
+    async def get_popular_products_by_ingredient(self, ingredient: str, limit: int = 5) -> list[dict]:
+        """
+        특정 성분이 포함된 미국 제품 중 가장 대중적인(빈도가 높은) 브랜드 상위 5개 추출
+        FDA count API (openfda.brand_name.exact) 활용
+        """
+        ingr_up = ingredient.upper()
+        # 성분명 접미사 제거하여 더 넓은 매칭 시도
+        base_name = self._get_base_ingredient_name(ingr_up)
+        
+        params = {
+            'search': f'(openfda.substance_name:"{base_name}" OR openfda.generic_name:"{base_name}") AND {FDA_OTC_FILTER}',
+            'count': 'openfda.brand_name.exact',
+            'limit': 50 # 상위 50개 중 유효한 브랜드명 선별
+        }
+
+        data = await self._fetch_from_fda(params)
+        popular_products = []
+        
+        if data and data.get('results'):
+            results = data['results']
+            # 유효한 브랜드명 필터링 및 상위 n개 추출
+            for item in results:
+                brand = item.get('term', '').upper()
+                count = item.get('count', 0)
+                
+                # 너무 짧거나 숫자로 시작하거나 일반명과 동일한 브랜드는 제외 시도
+                if not brand or len(brand) < 2:
+                    continue
+                if brand == base_name:
+                    continue
+                
+                popular_products.append({
+                    "brand_name": brand,
+                    "popularity_score": count
+                })
+                
+                if len(popular_products) >= limit:
+                    break
+                    
+        return popular_products
 
     async def find_optimal_us_products(self, ingredients: list[str]) -> dict:
         """복합 성분 기반 미국 OTC 제품 최적 매칭"""

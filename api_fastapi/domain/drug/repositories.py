@@ -20,6 +20,11 @@ class DrugRepository(ABC):
         """품목기준코드로 단건 조회"""
         ...
 
+    @abstractmethod
+    async def find_by_efficacy(self, symptom_keyword: str, limit: int = 100) -> list[DrugEntity]:
+        """효능(efficacy) 필드에서 증상 키워드로 약품 검색"""
+        ...
+
 
 class DurRepository(ABC):
     """DUR 금기 정보 저장소 인터페이스"""

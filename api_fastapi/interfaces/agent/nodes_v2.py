@@ -25,6 +25,7 @@ drug_search_use_case = DrugSearchUseCase(drug_repo)
 symptom_recommend_use_case = SymptomRecommendUseCase(
     dur_repo=dur_repo,
     fda_client=fda_client,
+    drug_repo=drug_repo,
     ai_service=AIService,
     cache=cache_repo
 )
@@ -41,8 +42,9 @@ async def classify_node(state: AgentState) -> AgentState:
 
     category = intent.get("category", "invalid")
     keyword = intent.get("keyword", "")
+    keyword_kr = intent.get("keyword_kr", "")
     cache_key = intent.get("cache_key", query)
-    logger.info(f"Classified query: {category} (cache_key: {cache_key})")
+    logger.info(f"Classified query: {category} (keyword_kr: {keyword_kr}, cache_key: {cache_key})")
 
     # 캐시 확인
     t1 = time.time()
@@ -65,6 +67,7 @@ async def classify_node(state: AgentState) -> AgentState:
     return {
         "category": category,
         "keyword": keyword,
+        "keyword_kr": keyword_kr,
         "symptom": query if category == "symptom_recommendation" else None,
         "cache_key": cache_key if category == "symptom_recommendation" else None,
         "is_cached": False
@@ -80,7 +83,9 @@ async def retrieve_fda_node(state: AgentState) -> AgentState:
 
     if category == "symptom_recommendation":
         keyword = keyword or query
-        fda_data = await symptom_recommend_use_case.get_fda_ingredients_for_symptom(keyword)
+        # DB 검색을 위해 AI가 추출한 한국어 표준 의학 용어(keyword_kr)를 우선 사용
+        symptom_context = state.get("keyword_kr") or state.get("symptom") or query
+        fda_data = await symptom_recommend_use_case.get_best_ingredients_for_symptom(keyword, symptom_context)
         logger.info(f"[⏱ TIMING] retrieve_fda (symptom, ingredients={len(fda_data) if fda_data else 0}): {time.time()-t0:.2f}s")
     elif category == "product_request":
         target = keyword if keyword and keyword != "none" else query

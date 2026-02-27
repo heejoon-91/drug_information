@@ -73,3 +73,26 @@ class SupabaseDrugRepository(DrugRepository):
         except Exception as e:
             logger.error(f"[Supabase] find_by_item_seq 오류: {e}")
             return None
+
+    async def find_by_efficacy(self, symptom_keyword: str, limit: int = 100) -> list[DrugEntity]:
+        """효능(efficacy) 필드에서 증상 키워드로 약품 검색"""
+        if not self._client or not symptom_keyword:
+            return []
+            
+        try:
+            # unified_drug_info 테이블에서 efficacy 필드에 키워드 포함여부 필터링
+            response = self._client.table("unified_drug_info").select("item_seq, item_name, entp_name, main_ingr_eng, efficacy").ilike("efficacy", f"%{symptom_keyword}%").limit(limit).execute()
+            
+            return [
+                DrugEntity(
+                    item_seq=item.get("item_seq"),
+                    item_name=item.get("item_name"),
+                    entp_name=item.get("entp_name"),
+                    main_ingr_eng=item.get("main_ingr_eng"),
+                    efficacy=item.get("efficacy")
+                )
+                for item in response.data
+            ]
+        except Exception as e:
+            logger.error(f"[Supabase] find_by_efficacy 오류: {e}")
+            return []

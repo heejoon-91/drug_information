@@ -20,18 +20,12 @@ class MapService:
 
     @classmethod
     async def get_us_otc_products_by_ingredient(cls, ingredient: str, translate: bool = True):
-        logger.info(f"[MapService] Fetching US OTC products for ingredient: '{ingredient}' (translate={translate})")
-        result = await _fda_client.get_otc_products_by_ingredient(ingredient)
-        products = result.get("products", [])
-        logger.info(f"[MapService] Found {len(products)} products for '{ingredient}'")
+        logger.info(f"[MapService] Fetching POPULAR US OTC products for ingredient: '{ingredient}'")
+        # 가장 인기 있는 상위 5개 브랜드 추출
+        popular_brands = await _fda_client.get_popular_products_by_ingredient(ingredient, limit=5)
         
-        if translate and products:
-            purposes = [p['purpose'] for p in products]
-            translated = await AIService.translate_purposes(purposes)
-            for i, prod in enumerate(products):
-                if i < len(translated):
-                    prod['purpose'] = translated[i]
-        return result
+        # UI 호환성을 위해 products 키로 반환
+        return {"ingredient": ingredient, "products": popular_brands}
 
     @classmethod
     async def find_optimal_us_products(cls, ingredients: list) -> dict:

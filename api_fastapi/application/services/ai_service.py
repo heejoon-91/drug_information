@@ -374,3 +374,51 @@ class AIService:
         except Exception as e:
             logger.error(f"Error in translate_purposes: {e}")
             return purposes
+
+    @classmethod
+    async def filter_relevant_ingredients(cls, symptom: str, ingredients: list) -> list:
+        """
+        증상에 무관한 성분(예: 두통 질문에 기침약 성분)을 필터링하여 핵심 성분만 추출
+        """
+        client = cls.get_client()
+        if not client or not ingredients:
+            return ingredients[:5]
+
+        prompt = f"""
+        The user is complaining about the symptom: "{symptom}".
+        Below is a list of candidate drug ingredients extracted from a database. 
+        Some of these might be unrelated (e.g., antitussives like dextromethorphan for a headache)
+        because they came from multi-symptom cold medicines.
+        
+        Candidate Ingredients: {", ".join(ingredients)}
+        
+        Please select the top 5-7 most relevant active ingredients for "{symptom}" ONLY.
+        Include standard painkillers (like ACETAMINOPHEN, IBUPROFEN, NAPROXEN, ASPIRIN or ACETYLSALICYLIC ACID) if they are in the candidate list.
+        Exclude ingredients that primarily treat unrelated conditions (like cough, congestion, or sputum) 
+        unless they are directly relevant to the symptom.
+        
+        Return ONLY a JSON list of strings.
+        Example: ["ACETAMINOPHEN", "IBUPROFEN", "ASPIRIN"]
+        """
+
+        try:
+            res = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a pharmaceutical expert."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0
+            )
+            data = json.loads(res.choices[0].message.content)
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                for v in data.values():
+                    if isinstance(v, list):
+                        return v
+            return ingredients[:5]
+        except Exception as e:
+            logger.error(f"Error in filter_relevant_ingredients: {e}")
+            return ingredients[:5]

@@ -4,7 +4,9 @@ application/use_cases/symptom_recommend.py
 """
 import logging
 import asyncio
-from domain.drug.repositories import DurRepository
+import re
+from collections import Counter
+from domain.drug.repositories import DurRepository, DrugRepository
 from infrastructure.external_api.fda_client import FdaClient
 
 logger = logging.getLogger(__name__)
@@ -23,40 +25,70 @@ class SymptomRecommendUseCase:
         self,
         dur_repo: DurRepository,
         fda_client: FdaClient,
+        drug_repo: DrugRepository = None,
         ai_service=None,
         cache=None,
     ):
         self._dur_repo = dur_repo
         self._fda_client = fda_client
+        self._drug_repo = drug_repo
         self._ai_service = ai_service
         self._cache = cache
 
-    async def get_fda_ingredients_for_symptom(self, keyword: str) -> list[str]:
+    async def get_best_ingredients_for_symptom(self, keyword: str, symptom: str = None) -> list[str]:
         """
-        증상 키워드 → FDA 성분 추출 (동의어 즉시 병합 검색으로 결과 확대)
+        [DB-First 설계]
+        증상 키워드 → 1. 국내 DB 효능 검색 → 2. FDA 검색 → 3. AI 추천 순으로 성분 추출
         """
-        import asyncio
+        candidate_ingrs = []
+        db_search_key = symptom if symptom and any('\uac00' <= c <= '\ud7a3' for c in symptom) else keyword
+        
+        # 1. 국내 DB 효능(efficacy) 검색 (우선순위 1)
+        if self._drug_repo:
+            logger.info(f"1단계: 국내 DB 효능 검색 시도 ('{db_search_key}')")
+            drugs = await self._drug_repo.find_by_efficacy(db_search_key, limit=20)
+            db_ingrs = []
+            for d in drugs:
+                if d.main_ingr_eng:
+                    parts = [p.strip().upper() for p in re.split(r'[/,]', d.main_ingr_eng)]
+                    db_ingrs.extend(parts)
+            
+            if db_ingrs:
+                counts = Counter(db_ingrs)
+                candidate_ingrs = [item for item, count in counts.most_common(15)]
+                logger.info(f"국내 DB에서 {len(candidate_ingrs)}개 성분 후보 추출 완료")
 
-        # 1차: 단일 키워드 검색
-        fda_ingrs = await self._fda_client.get_ingredients_by_symptoms([keyword])
+        # 2. 국내 DB 결과가 없으면 기존 FDA 검색 수행 (우선순위 2)
+        if not candidate_ingrs:
+            logger.info(f"2단계: FDA 성분 추출 시도 ('{keyword}')")
+            candidate_ingrs = await self._fda_client.get_ingredients_by_symptoms([keyword])
 
-        # 결과가 없거나 너무 적으면(<=1개) 동의어도 병렬로 검색해서 합산
-        if len(fda_ingrs) <= 1 and self._ai_service:
-            logger.info(f"FDA 검색 결과 부족({len(fda_ingrs)}개). AI 동의어 병합 검색 시도 중...")
-            synonyms = await self._ai_service.get_symptom_synonyms(keyword)
-            if synonyms:
-                # 원본 키워드 + 동의어를 한 번에 묶어서 재검색
-                all_keywords = [keyword] + synonyms[:4]  # 최대 5개 키워드
-                fda_ingrs = await self._fda_client.get_ingredients_by_symptoms(all_keywords)
-                logger.info(f"동의어 병합 검색 결과: {len(fda_ingrs)}개 성분")
+            # 3. 결과가 부족하면 동의어 검색
+            if len(candidate_ingrs) <= 1 and self._ai_service:
+                logger.info(f"FDA 검색 결과 부족. AI 동의어 병합 검색 시도 중...")
+                synonyms = await self._ai_service.get_symptom_synonyms(keyword)
+                if synonyms:
+                    all_keywords = [keyword] + synonyms[:4]
+                    candidate_ingrs = await self._fda_client.get_ingredients_by_symptoms(all_keywords)
 
-        # 그래도 없으면 AI 직접 추천
-        if not fda_ingrs and self._ai_service:
-            logger.info("FDA + 동의어 검색 실패. AI 성분 직접 추천 중...")
-            fda_ingrs = await self._ai_service.recommend_ingredients_for_symptom(keyword)
-            logger.info(f"AI 직접 추천 결과: {fda_ingrs}")
+        # 4. 그래도 없으면 AI 직접 추천 (우선순위 3)
+        if not candidate_ingrs and self._ai_service:
+            logger.info("모든 검색 실패. AI 성분 직접 추천 중...")
+            candidate_ingrs = await self._ai_service.recommend_ingredients_for_symptom(keyword)
+            logger.info(f"AI 직접 추천 결과: {candidate_ingrs}")
 
-        return fda_ingrs
+        # [핵심] 모든 경로에서 추출된 성분에 대해 AI 필터링 적용 (증상 적합성 검증)
+        if candidate_ingrs and self._ai_service:
+            logger.info(f"최종 AI 필터링 시작 (대상: {len(candidate_ingrs)}개 성분)")
+            # 필터링용 증상은 사용자의 원래 질문(symptom)을 우선 사용
+            filter_key = symptom or keyword
+            filtered_ingrs = await self._ai_service.filter_relevant_ingredients(filter_key, candidate_ingrs)
+            # 엄격하게 상위 5개만 반환
+            final_5 = filtered_ingrs[:5]
+            logger.info(f"최종 AI 필터링 결과 (상위 5): {final_5}")
+            return final_5
+
+        return candidate_ingrs[:5]
 
     async def get_enriched_dur_for_ingredients(self, ingr_list: list[str]) -> list[dict]:
         """
