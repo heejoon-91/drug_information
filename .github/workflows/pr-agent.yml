@@ -1,0 +1,23 @@
+name: PR Agent
+
+on:
+  pull_request:
+  issue_comment:
+
+jobs:
+  pr_agent:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run PR-Agent
+        uses: codium-ai/pr-agent@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
