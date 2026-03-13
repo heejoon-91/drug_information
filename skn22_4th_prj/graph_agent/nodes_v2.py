@@ -124,6 +124,72 @@ def _merge_unique_terms(*groups):
     return merged
 
 
+def _normalize_cache_tokens(values):
+    tokens = []
+    seen = set()
+    if not isinstance(values, (list, tuple, set)):
+        values = [values]
+    for raw in values:
+        token = str(raw or "").strip().upper()
+        if not token:
+            continue
+        token = canonicalize_ingredient_name(token) or token
+        token = str(token or "").strip().upper()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    tokens.sort()
+    return tokens
+
+
+def _normalize_profile_terms(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"[,/;|\n]+", raw)
+    tokens = []
+    seen = set()
+    for part in parts:
+        token = str(part or "").strip().upper()
+        if not token:
+            continue
+        token = re.sub(r"\([^)]*\)", " ", token)
+        token = re.sub(r"\s+", " ", token).strip()
+        if not token or token.lower() in _EMPTY_PROFILE_TOKENS or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    tokens.sort()
+    return tokens
+
+
+def _build_symptom_cache_key(symptom_term: str) -> str:
+    token = str(symptom_term or "").strip().lower()
+    token = re.sub(r"\s+", "_", token)
+    token = re.sub(r"[^a-z0-9_가-힣\-]", "", token)
+    return token or "unknown_symptom"
+
+
+def _build_user_safety_profile_hash(user_profile: dict) -> str:
+    profile = user_profile if isinstance(user_profile, dict) else {}
+    payload = {
+        "current_medications": _normalize_cache_tokens(
+            _normalize_profile_terms(profile.get("current_medications"))
+            + _normalize_profile_terms(profile.get("main_ingr_eng"))
+        ),
+        "allergies": _normalize_profile_terms(profile.get("allergies")),
+        "chronic_diseases": _normalize_profile_terms(profile.get("chronic_diseases")),
+        "is_pregnant": _to_bool(profile.get("is_pregnant")),
+    }
+    return SupabaseService.stable_hash_payload(payload)
+
+
+def _build_ingredient_hash(ingredients) -> str:
+    normalized = _normalize_cache_tokens(ingredients or [])
+    return SupabaseService.stable_hash_payload(normalized)
+
+
 def _is_excluded_ingredient_for_symptom(symptom_term: str, ingredient_name: str) -> bool:
     symptom_key = str(symptom_term or "").strip()
     if not symptom_key:
@@ -523,6 +589,7 @@ async def classify_node(state: AgentState) -> AgentState:
         "symptom": query if category == "symptom_recommendation" else None,
         "cache_key": None,
         "is_cached": False,
+        "cache_source": None,
     }
 
 
@@ -563,6 +630,7 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
                         "allergies": applied_allergies,
                         "chronic_diseases": applied_chronic_diseases,
                         "is_pregnant": bool(getattr(profile, "is_pregnant", False)),
+                        "main_ingr_eng": str(getattr(profile, "main_ingr_eng", "") or "").strip(),
                     }
             except Exception as e:
                 logger.error(f"Error fetching user profile from Supabase: {e}")
@@ -574,135 +642,172 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
             if known and known in str(query):
                 db_symptom_term = known
                 break
+        symptom_cache_key = _build_symptom_cache_key(db_symptom_term)
+        profile_cache_hash = _build_user_safety_profile_hash(user_profile_data or {})
+        cache_source = None
 
-        ranked_ingredients = await SupabaseService.search_ingredient_scores_by_symptom(
-            keyword=db_symptom_term,
-            raw_query=query,
-            max_rows=5000,
-        )
-        all_ingredients = [item["ingredient"] for item in ranked_ingredients]
-        ingredient_efficacy_map = {}
-        for item in ranked_ingredients:
-            name = canonicalize_ingredient_name(item.get("ingredient"))
-            if not name:
-                continue
-            name_key = str(name).strip().upper()
-            if not name_key:
-                continue
-            efficacy_text = str(item.get("sample_efficacy") or "").strip()
-            if efficacy_text and name_key not in ingredient_efficacy_map:
-                ingredient_efficacy_map[name_key] = efficacy_text
-        eng_kw = _to_fda_symptom_terms(db_symptom_term)
-        if not eng_kw:
-            eng_kw = _to_fda_symptom_terms(keyword)
-        if not eng_kw:
-            eng_kw = ["pain"]
-        search_terms = list(eng_kw)
-        fda_candidates = []
-        should_query_fda_candidates = not ranked_ingredients or len(ranked_ingredients) < 5
-        if should_query_fda_candidates:
-            logger.info(
-                "FDA symptom ingredient terms: %s",
-                ", ".join(search_terms),
+        cached_selection = await SupabaseService.get_symptom_selection_cache(symptom_cache_key)
+        if cached_selection and cached_selection.get("ingredient_candidates"):
+            logger.info("Symptom selection cache hit: %s", symptom_cache_key)
+            all_ingredients = canonicalize_ingredient_list(
+                cached_selection.get("all_ingredient_candidates") or []
             )
-            fda_candidates = await DrugService.get_ingrs_from_fda_by_symptoms(
-                search_terms
+            selected_ingredients = canonicalize_ingredient_list(
+                cached_selection.get("ingredient_candidates") or []
+            )[:5]
+            backup_ingredients = canonicalize_ingredient_list(
+                cached_selection.get("backup_ingredient_candidates") or []
+            )[:5]
+            ingredient_efficacy_map = (
+                cached_selection.get("ingredient_efficacy_map")
+                if isinstance(cached_selection.get("ingredient_efficacy_map"), dict)
+                else {}
             )
-            fda_candidates = canonicalize_ingredient_list(fda_candidates)
-            fda_candidates = [
-                token
-                for token in fda_candidates
-                if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
-            ]
-            if not fda_candidates:
-                synonyms = await AIService.get_symptom_synonyms(keyword or query)
-                if synonyms:
-                    search_terms = _merge_unique_terms(eng_kw, synonyms)
-                    fda_candidates = await DrugService.get_ingrs_from_fda_by_symptoms(
-                        search_terms
-                    )
-                    fda_candidates = canonicalize_ingredient_list(fda_candidates)
-                    fda_candidates = [
-                        token
-                        for token in fda_candidates
-                        if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
-                    ]
-
-        if ranked_ingredients:
-            merged_scores = {}
+            fda_candidates = []
+            cache_source = "symptom_selection_v1"
+        else:
+            ranked_ingredients = await SupabaseService.search_ingredient_scores_by_symptom(
+                keyword=db_symptom_term,
+                raw_query=query,
+                max_rows=5000,
+            )
+            all_ingredients = [item["ingredient"] for item in ranked_ingredients]
+            ingredient_efficacy_map = {}
             for item in ranked_ingredients:
                 name = canonicalize_ingredient_name(item.get("ingredient"))
                 if not name:
                     continue
-                if _is_excluded_ingredient_for_symptom(db_symptom_term, name):
+                name_key = str(name).strip().upper()
+                if not name_key:
                     continue
-                merged_scores[name] = merged_scores.get(name, 0) + int(item.get("score", 0) or 0)
-            scored_candidates = [
-                {"ingredient": name, "score": score}
-                for name, score in sorted(merged_scores.items(), key=lambda x: (-x[1], x[0]))
-            ]
-        else:
-            scored_candidates = []
+                efficacy_text = str(item.get("sample_efficacy") or "").strip()
+                if efficacy_text and name_key not in ingredient_efficacy_map:
+                    ingredient_efficacy_map[name_key] = efficacy_text
+            eng_kw = _to_fda_symptom_terms(db_symptom_term)
+            if not eng_kw:
+                eng_kw = _to_fda_symptom_terms(keyword)
+            if not eng_kw:
+                eng_kw = ["pain"]
+            search_terms = list(eng_kw)
+            fda_candidates = []
+            should_query_fda_candidates = not ranked_ingredients or len(ranked_ingredients) < 5
+            if should_query_fda_candidates:
+                logger.info(
+                    "FDA symptom ingredient terms: %s",
+                    ", ".join(search_terms),
+                )
+                fda_candidates = await DrugService.get_ingrs_from_fda_by_symptoms(
+                    search_terms
+                )
+                fda_candidates = canonicalize_ingredient_list(fda_candidates)
+                fda_candidates = [
+                    token
+                    for token in fda_candidates
+                    if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
+                ]
+                if not fda_candidates:
+                    synonyms = await AIService.get_symptom_synonyms(keyword or query)
+                    if synonyms:
+                        search_terms = _merge_unique_terms(eng_kw, synonyms)
+                        fda_candidates = await DrugService.get_ingrs_from_fda_by_symptoms(
+                            search_terms
+                        )
+                        fda_candidates = canonicalize_ingredient_list(fda_candidates)
+                        fda_candidates = [
+                            token
+                            for token in fda_candidates
+                            if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
+                        ]
 
-        # Primary selection:
-        # Let LLM choose direct symptom-relief ingredients from DB-extracted candidates.
-        selected_ingredients = []
-        if scored_candidates:
-            selected_ingredients = await AIService.select_direct_symptom_ingredients(
-                symptom=db_symptom_term or keyword or query,
-                candidates=scored_candidates,
-                top_n=5,
-            )
-            selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[:5]
-            selected_ingredients = [
-                token
-                for token in selected_ingredients
-                if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
-            ]
-            if len(selected_ingredients) < 5 and fda_candidates:
-                for token in fda_candidates:
-                    if token in selected_ingredients:
+            if ranked_ingredients:
+                merged_scores = {}
+                for item in ranked_ingredients:
+                    name = canonicalize_ingredient_name(item.get("ingredient"))
+                    if not name:
                         continue
-                    selected_ingredients.append(token)
-                    if len(selected_ingredients) >= 5:
-                        break
-            logger.info(
-                "Symptom direct ingredient selection via LLM: selected=%d from_candidates=%d",
-                len(selected_ingredients),
-                len(scored_candidates),
-            )
+                    if _is_excluded_ingredient_for_symptom(db_symptom_term, name):
+                        continue
+                    merged_scores[name] = merged_scores.get(name, 0) + int(item.get("score", 0) or 0)
+                scored_candidates = [
+                    {"ingredient": name, "score": score}
+                    for name, score in sorted(merged_scores.items(), key=lambda x: (-x[1], x[0]))
+                ]
+            else:
+                scored_candidates = []
 
-        if not selected_ingredients:
-            logger.info(
-                f"DB symptom search returned no ingredients for '{db_symptom_term}'. "
-                "Falling back to FDA symptom ingredient search."
-            )
-            all_ingredients = list(fda_candidates)
-
-            if not all_ingredients:
-                all_ingredients = await AIService.recommend_ingredients_for_symptom(
-                    keyword or query
+            selected_ingredients = []
+            if scored_candidates:
+                selected_ingredients = await AIService.select_direct_symptom_ingredients(
+                    symptom=db_symptom_term or keyword or query,
+                    candidates=scored_candidates,
+                    top_n=5,
+                )
+                selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[:5]
+                selected_ingredients = [
+                    token
+                    for token in selected_ingredients
+                    if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
+                ]
+                if len(selected_ingredients) < 5 and fda_candidates:
+                    for token in fda_candidates:
+                        if token in selected_ingredients:
+                            continue
+                        selected_ingredients.append(token)
+                        if len(selected_ingredients) >= 5:
+                            break
+                logger.info(
+                    "Symptom direct ingredient selection via LLM: selected=%d from_candidates=%d",
+                    len(selected_ingredients),
+                    len(scored_candidates),
                 )
 
-            all_ingredients = canonicalize_ingredient_list(all_ingredients)
-            all_ingredients = [
-                token
-                for token in all_ingredients
-                if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
-            ]
-            selected_ingredients = all_ingredients[:5]
-        else:
-            all_ingredients = canonicalize_ingredient_list(
-                [item["ingredient"] for item in scored_candidates] + list(fda_candidates)
+            if not selected_ingredients:
+                logger.info(
+                    f"DB symptom search returned no ingredients for '{db_symptom_term}'. "
+                    "Falling back to FDA symptom ingredient search."
+                )
+                all_ingredients = list(fda_candidates)
+
+                if not all_ingredients:
+                    all_ingredients = await AIService.recommend_ingredients_for_symptom(
+                        keyword or query
+                    )
+
+                all_ingredients = canonicalize_ingredient_list(all_ingredients)
+                all_ingredients = [
+                    token
+                    for token in all_ingredients
+                    if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
+                ]
+                selected_ingredients = all_ingredients[:5]
+            else:
+                all_ingredients = canonicalize_ingredient_list(
+                    [item["ingredient"] for item in scored_candidates] + list(fda_candidates)
+                )
+                all_ingredients = [
+                    token
+                    for token in all_ingredients
+                    if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
+                ]
+
+            selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[:5]
+            backup_ingredients = canonicalize_ingredient_list(selected_ingredients[5:10])[:5]
+            await SupabaseService.set_symptom_selection_cache(
+                symptom_key=symptom_cache_key,
+                symptom_term=db_symptom_term,
+                all_ingredient_candidates=all_ingredients,
+                ingredient_candidates=selected_ingredients,
+                backup_ingredient_candidates=backup_ingredients,
+                ingredient_efficacy_map=ingredient_efficacy_map,
             )
-            all_ingredients = [
-                token
-                for token in all_ingredients
-                if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
-            ]
 
         fda_ingredients = selected_ingredients[:5]
-        backup_ingredients = selected_ingredients[5:10]
+        ingredient_cache_hash = _build_ingredient_hash(fda_ingredients)
+        final_cache_key = SupabaseService.build_personalized_symptom_cache_key(
+            symptom_key=symptom_cache_key,
+            profile_hash=profile_cache_hash,
+            ingredient_hash=ingredient_cache_hash,
+        )
 
         logger.info(
             f"Symptom raw='{query}', db_term='{db_symptom_term}', keyword='{keyword}' "
@@ -726,6 +831,12 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
             "symptom_term": db_symptom_term,
             "fda_data": fda_ingredients,
             "user_profile": user_profile_data,
+            "cache_key": final_cache_key,
+            "cache_source": cache_source,
+            "symptom_cache_key": symptom_cache_key,
+            "profile_cache_hash": profile_cache_hash,
+            "ingredient_cache_hash": ingredient_cache_hash,
+            "final_cache_key": final_cache_key,
         }
 
     if category == "product_request":
@@ -766,13 +877,34 @@ async def retrieve_dur_node(state: AgentState) -> AgentState:
     category = state["category"]
 
     if category == "symptom_recommendation":
+        final_cache_key = str(state.get("final_cache_key") or "").strip()
+        profile_cache_hash = str(state.get("profile_cache_hash") or "").strip().lower()
+        ingredient_cache_hash = str(state.get("ingredient_cache_hash") or "").strip().lower()
+        if final_cache_key:
+            cached_payload = await SupabaseService.get_personalized_symptom_cache(
+                cache_key=final_cache_key,
+                profile_hash=profile_cache_hash,
+                ingredient_hash=ingredient_cache_hash,
+            )
+            if cached_payload and cached_payload.get("final_answer"):
+                logger.info("Personalized symptom cache hit: %s", final_cache_key)
+                return {
+                    "is_cached": True,
+                    "cache_source": "symptom_final_v1",
+                    "final_answer": cached_payload.get("final_answer") or "",
+                    "dur_data": cached_payload.get("dur_data") or [],
+                    "ingredients_data": cached_payload.get("ingredients_data") or [],
+                    "ingredient_candidates": cached_payload.get("ingredient_candidates")
+                    or (state.get("ingredient_candidates") or []),
+                }
+
         ingredients = state.get("ingredient_candidates") or []
         if not ingredients:
             return {"dur_data": []}
         # Initial response: KR DUR only.
         # US warning and product details are loaded asynchronously from a follow-up API.
         dur_data = await DrugService.get_kr_dur_info(ingredients)
-        return {"dur_data": dur_data}
+        return {"dur_data": dur_data, "is_cached": False}
 
     if category == "product_request":
         fda_data = state.get("fda_data")
@@ -793,6 +925,15 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
     dur_data = state.get("dur_data") or []
     fda_data = state.get("fda_data", [])
     products_map = {}
+
+    if state.get("is_cached") and state.get("final_answer"):
+        return {
+            "final_answer": state.get("final_answer") or "",
+            "dur_data": dur_data,
+            "fda_data": fda_data,
+            "ingredients_data": state.get("ingredients_data") or [],
+            "cache_source": state.get("cache_source") or "symptom_final_v1",
+        }
 
     if not dur_data:
         fallback_query = (
@@ -874,11 +1015,26 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
     profile_tail = _build_profile_reflection_tail(state.get("user_profile"), ingredients_data)
     final_answer = summary + profile_tail if profile_tail else summary
 
+    final_cache_key = str(state.get("final_cache_key") or "").strip()
+    if final_cache_key and ingredients_data:
+        await SupabaseService.set_personalized_symptom_cache(
+            cache_key=final_cache_key,
+            symptom_key=state.get("symptom_cache_key") or _build_symptom_cache_key(symptom or ""),
+            symptom_term=state.get("symptom_term") or "",
+            profile_hash=state.get("profile_cache_hash") or "",
+            ingredient_hash=state.get("ingredient_cache_hash") or "",
+            ingredient_candidates=ordered_names,
+            dur_data=dur_data,
+            ingredients_data=ingredients_data,
+            final_answer=final_answer,
+        )
+
     return {
         "final_answer": final_answer,
         "dur_data": dur_data,
         "fda_data": fda_data,
         "ingredients_data": ingredients_data,
+        "cache_source": state.get("cache_source"),
     }
 
 

@@ -24,3 +24,8 @@ class AgentState(TypedDict):
     # Caching fields
     cache_key: Optional[str]
     is_cached: Optional[bool]
+    cache_source: Optional[str]
+    symptom_cache_key: Optional[str]
+    profile_cache_hash: Optional[str]
+    ingredient_cache_hash: Optional[str]
+    final_cache_key: Optional[str]

@@ -3,6 +3,8 @@ import re
 import logging
 import asyncio
 import json
+import hashlib
+import datetime as dt
 from supabase import create_client, Client
 
 from services.ai_service_v2 import AIService
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 class SupabaseService:
     _client = None
     _roadmap_cache_disabled = False
+    _search_cache_disabled = False
     _KCD_TABLE = "kcd_info"
     _KCD_CODE_COL = "kcd_code"
     _KCD_NAME_KOR_COL = "kcd_name_kor"
@@ -97,13 +100,338 @@ class SupabaseService:
         return re.sub(r"\s+", "", str(text or "")).lower()
 
     @classmethod
-    def _is_kcd_source_missing_error(cls, error: Exception) -> bool:
+    def _is_missing_relation_error(cls, error: Exception) -> bool:
         message = str(error or "").lower()
         return (
             ("relation" in message and "does not exist" in message)
             or ("table" in message and "not found" in message)
             or ("could not find the table" in message)
         )
+
+    @classmethod
+    def _is_kcd_source_missing_error(cls, error: Exception) -> bool:
+        return cls._is_missing_relation_error(error)
+
+    @staticmethod
+    def _utcnow_iso() -> str:
+        return dt.datetime.now(dt.timezone.utc).isoformat()
+
+    @staticmethod
+    def _parse_timestamp(value):
+        if not value:
+            return None
+        if isinstance(value, dt.datetime):
+            return value.astimezone(dt.timezone.utc)
+        token = str(value or "").strip()
+        if not token:
+            return None
+        try:
+            token = token.replace("Z", "+00:00")
+            parsed = dt.datetime.fromisoformat(token)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=dt.timezone.utc)
+            return parsed.astimezone(dt.timezone.utc)
+        except Exception:
+            return None
+
+    @classmethod
+    def _extract_cache_timestamp(cls, row: dict):
+        if not isinstance(row, dict):
+            return None
+
+        payload = row.get("fda_data")
+        if isinstance(payload, dict):
+            direct_saved_at = cls._parse_timestamp(payload.get("saved_at"))
+            if direct_saved_at:
+                return direct_saved_at
+            meta = payload.get("meta")
+            if isinstance(meta, dict):
+                meta_saved_at = cls._parse_timestamp(meta.get("saved_at"))
+                if meta_saved_at:
+                    return meta_saved_at
+
+        return cls._parse_timestamp(row.get("created_at"))
+
+    @classmethod
+    def _is_cache_fresh(cls, row: dict, ttl_seconds: int) -> bool:
+        if ttl_seconds <= 0:
+            return True
+        saved_at = cls._extract_cache_timestamp(row)
+        if not saved_at:
+            return False
+        age = dt.datetime.now(dt.timezone.utc) - saved_at
+        return age.total_seconds() <= ttl_seconds
+
+    @classmethod
+    def _default_ttl_seconds(cls, env_key: str, default: int) -> int:
+        try:
+            return max(int(os.getenv(env_key, str(default))), 0)
+        except Exception:
+            return default
+
+    @classmethod
+    async def _get_search_cache_row(
+        cls,
+        query_text: str,
+        category: str = "",
+        ttl_seconds: int = 0,
+    ):
+        if cls._search_cache_disabled:
+            return None
+
+        client = cls.get_client()
+        if not client:
+            return None
+
+        try:
+            def _query():
+                query = client.table("search_cache").select("*").eq("query_text", query_text)
+                if category:
+                    query = query.eq("category", category)
+                return query.limit(1).execute()
+
+            response = await cls._run_io(_query)
+            row = (response.data or [None])[0]
+            if not row:
+                return None
+            if ttl_seconds and not cls._is_cache_fresh(row, ttl_seconds):
+                return None
+            return row
+        except Exception as e:
+            if cls._is_missing_relation_error(e):
+                if not cls._search_cache_disabled:
+                    logger.warning(
+                        "[Cache] search_cache table is unavailable. Search cache will be disabled."
+                    )
+                cls._search_cache_disabled = True
+                return None
+            logger.warning(f"[Cache] Search cache read failed for '{query_text}': {e}")
+            return None
+
+    @classmethod
+    async def _upsert_search_cache_row(
+        cls,
+        query_text: str,
+        category: str,
+        fda_data=None,
+        dur_data=None,
+        final_answer="",
+        recommended_ingredients=None,
+    ) -> bool:
+        if cls._search_cache_disabled:
+            return False
+
+        client = cls.get_client()
+        if not client:
+            return False
+
+        payload = {
+            "query_text": query_text,
+            "category": category,
+            "fda_data": fda_data if fda_data is not None else {},
+            "dur_data": dur_data if dur_data is not None else [],
+            "final_answer": final_answer or "",
+            "recommended_ingredients": (
+                recommended_ingredients if recommended_ingredients is not None else []
+            ),
+            "created_at": cls._utcnow_iso(),
+        }
+
+        try:
+            await cls._run_io(
+                lambda: client.table("search_cache")
+                .upsert(payload, on_conflict="query_text")
+                .execute()
+            )
+            return True
+        except Exception as e:
+            if cls._is_missing_relation_error(e):
+                if not cls._search_cache_disabled:
+                    logger.warning(
+                        "[Cache] search_cache table is unavailable. Search cache will be disabled."
+                    )
+                cls._search_cache_disabled = True
+                return False
+            logger.warning(f"[Cache] Search cache save failed for '{query_text}': {e}")
+            return False
+
+    @classmethod
+    def build_symptom_selection_cache_key(cls, symptom_key: str) -> str:
+        token = str(symptom_key or "").strip().lower()
+        return f"symptom_selection:v1:{token}"
+
+    @classmethod
+    def build_personalized_symptom_cache_key(
+        cls,
+        symptom_key: str,
+        profile_hash: str,
+        ingredient_hash: str,
+    ) -> str:
+        symptom_token = str(symptom_key or "").strip().lower()
+        profile_token = str(profile_hash or "").strip().lower()
+        ingredient_token = str(ingredient_hash or "").strip().lower()
+        return (
+            "symptom_final:v1:"
+            f"{symptom_token}:"
+            f"{profile_token}:"
+            f"{ingredient_token}"
+        )
+
+    @classmethod
+    async def get_symptom_selection_cache(cls, symptom_key: str):
+        cache_key = cls.build_symptom_selection_cache_key(symptom_key)
+        ttl_seconds = cls._default_ttl_seconds("SYMPTOM_SELECTION_CACHE_TTL_SEC", 21600)
+        row = await cls._get_search_cache_row(
+            query_text=cache_key,
+            category="symptom_selection_v1",
+            ttl_seconds=ttl_seconds,
+        )
+        if not row:
+            return None
+
+        payload = row.get("fda_data")
+        if not isinstance(payload, dict):
+            return None
+
+        return {
+            "symptom_key": str(payload.get("symptom_key") or symptom_key).strip().lower(),
+            "symptom_term": str(payload.get("symptom_term") or "").strip(),
+            "all_ingredient_candidates": payload.get("all_ingredient_candidates") or [],
+            "ingredient_candidates": payload.get("ingredient_candidates") or [],
+            "backup_ingredient_candidates": payload.get("backup_ingredient_candidates")
+            or [],
+            "ingredient_efficacy_map": payload.get("ingredient_efficacy_map") or {},
+        }
+
+    @classmethod
+    async def set_symptom_selection_cache(
+        cls,
+        symptom_key: str,
+        symptom_term: str,
+        all_ingredient_candidates: list,
+        ingredient_candidates: list,
+        backup_ingredient_candidates: list,
+        ingredient_efficacy_map: dict,
+    ) -> bool:
+        cache_key = cls.build_symptom_selection_cache_key(symptom_key)
+        payload = {
+            "saved_at": cls._utcnow_iso(),
+            "symptom_key": str(symptom_key or "").strip().lower(),
+            "symptom_term": str(symptom_term or "").strip(),
+            "all_ingredient_candidates": (
+                all_ingredient_candidates if isinstance(all_ingredient_candidates, list) else []
+            ),
+            "ingredient_candidates": (
+                ingredient_candidates if isinstance(ingredient_candidates, list) else []
+            ),
+            "backup_ingredient_candidates": (
+                backup_ingredient_candidates
+                if isinstance(backup_ingredient_candidates, list)
+                else []
+            ),
+            "ingredient_efficacy_map": (
+                ingredient_efficacy_map if isinstance(ingredient_efficacy_map, dict) else {}
+            ),
+        }
+        return await cls._upsert_search_cache_row(
+            query_text=cache_key,
+            category="symptom_selection_v1",
+            fda_data=payload,
+            dur_data=[],
+            final_answer="",
+            recommended_ingredients=payload.get("ingredient_candidates") or [],
+        )
+
+    @classmethod
+    async def get_personalized_symptom_cache(
+        cls,
+        cache_key: str,
+        profile_hash: str = "",
+        ingredient_hash: str = "",
+    ):
+        ttl_seconds = cls._default_ttl_seconds("PERSONALIZED_SYMPTOM_CACHE_TTL_SEC", 10800)
+        row = await cls._get_search_cache_row(
+            query_text=cache_key,
+            category="symptom_final_v1",
+            ttl_seconds=ttl_seconds,
+        )
+        if not row:
+            return None
+
+        payload = row.get("fda_data")
+        if not isinstance(payload, dict):
+            return None
+
+        meta = payload.get("meta")
+        if not isinstance(meta, dict):
+            meta = {}
+
+        stored_profile_hash = str(meta.get("profile_hash") or "").strip().lower()
+        stored_ingredient_hash = str(meta.get("ingredient_hash") or "").strip().lower()
+        if profile_hash and stored_profile_hash and stored_profile_hash != profile_hash.lower():
+            return None
+        if ingredient_hash and stored_ingredient_hash and stored_ingredient_hash != ingredient_hash.lower():
+            return None
+
+        dur_data = row.get("dur_data")
+        ingredients_data = payload.get("ingredients_data")
+        recommended_ingredients = row.get("recommended_ingredients")
+
+        return {
+            "final_answer": str(row.get("final_answer") or "").strip(),
+            "dur_data": dur_data if isinstance(dur_data, list) else [],
+            "ingredients_data": ingredients_data if isinstance(ingredients_data, list) else [],
+            "ingredient_candidates": (
+                recommended_ingredients if isinstance(recommended_ingredients, list) else []
+            ),
+            "meta": meta,
+        }
+
+    @classmethod
+    async def set_personalized_symptom_cache(
+        cls,
+        cache_key: str,
+        symptom_key: str,
+        symptom_term: str,
+        profile_hash: str,
+        ingredient_hash: str,
+        ingredient_candidates: list,
+        dur_data: list,
+        ingredients_data: list,
+        final_answer: str,
+    ) -> bool:
+        payload = {
+            "saved_at": cls._utcnow_iso(),
+            "meta": {
+                "saved_at": cls._utcnow_iso(),
+                "symptom_key": str(symptom_key or "").strip().lower(),
+                "symptom_term": str(symptom_term or "").strip(),
+                "profile_hash": str(profile_hash or "").strip().lower(),
+                "ingredient_hash": str(ingredient_hash or "").strip().lower(),
+                "cache_version": "v1",
+            },
+            "ingredients_data": ingredients_data if isinstance(ingredients_data, list) else [],
+        }
+        return await cls._upsert_search_cache_row(
+            query_text=cache_key,
+            category="symptom_final_v1",
+            fda_data=payload,
+            dur_data=dur_data if isinstance(dur_data, list) else [],
+            final_answer=str(final_answer or "").strip(),
+            recommended_ingredients=(
+                ingredient_candidates if isinstance(ingredient_candidates, list) else []
+            ),
+        )
+
+    @staticmethod
+    def stable_hash_payload(payload) -> str:
+        normalized = json.dumps(
+            payload if payload is not None else {},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     @classmethod
     async def _ensure_kcd_source(cls):

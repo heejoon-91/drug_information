@@ -314,11 +314,7 @@ def symptom_products_page(request):
     )
 
 
-async def smart_search(request):
-    query = request.GET.get("q") or request.POST.get("q")
-    if not query:
-        return HttpResponse("<script>alert('寃?됱뼱瑜??낅젰?섏꽭??); history.back();</script>")
-
+async def _run_search_pipeline(request, query: str):
     logger.info(f"LangGraph User Query: {query}")
 
     user_info = request.session.get("supabase_user")
@@ -328,10 +324,15 @@ async def smart_search(request):
         result = await get_graph().ainvoke(inputs)
     except Exception as e:
         logger.error(f"Graph Execution Error: {e}")
-        return render(request, "error.html", {"message": f"泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎: {str(e)}"})
+        return {
+            "status": "error",
+            "query": query,
+            "message": f"처리 중 오류가 발생했습니다: {str(e)}",
+        }
 
     category = result.get("category")
     final_answer = result.get("final_answer", "")
+    cache_source = result.get("cache_source")
 
     if category == "symptom_recommendation":
         dur_data = result.get("dur_data", [])
@@ -349,10 +350,13 @@ async def smart_search(request):
             "dur_details": dur_data,
             "consultation_note": consultation_note,
         }
-        return render(
-            request,
-            "symptom_result.html",
-            {
+        return {
+            "status": "ok",
+            "query": query,
+            "category": category,
+            "cache_source": cache_source,
+            "template": "symptom_result.html",
+            "context": {
                 "symptom": query,
                 "answer": final_answer,
                 "ingredients_data": ingredients_data,
@@ -361,27 +365,44 @@ async def smart_search(request):
                 "maps_key": os.getenv("GOOGLE_MAPS_API_KEY"),
                 "consultation_note": consultation_note,
             },
-        )
+            "data": {
+                "answer": final_answer,
+                "dur_data": dur_data,
+                "ingredients_data": ingredients_data,
+                "dur_summary": _build_dur_summary(dur_data),
+                "consultation_note": consultation_note,
+            },
+        }
 
     if category == "product_request":
         fda = result.get("fda_data")
         dur = result.get("dur_data", [])
 
         if not fda:
-            return render(
-                request,
-                "general_result.html",
-                {
+            answer_text = final_answer or f"Supabase에서 '{query}' 제품 정보를 찾지 못했습니다."
+            return {
+                "status": "ok",
+                "query": query,
+                "category": "general_medical",
+                "cache_source": cache_source,
+                "template": "general_result.html",
+                "context": {
                     "query": query,
-                    "answer": final_answer
-                    or f"Supabase에서 '{query}' 제품 정보를 찾지 못했습니다.",
+                    "answer": answer_text,
                 },
-            )
+                "data": {
+                    "answer": answer_text,
+                },
+            }
 
-        return render(
-            request,
-            "search_result.html",
-            {
+        dur_summary = _build_dur_summary(dur)
+        return {
+            "status": "ok",
+            "query": query,
+            "category": category,
+            "cache_source": cache_source,
+            "template": "search_result.html",
+            "context": {
                 "drug_name": fda.get("brand_name", query),
                 "ingredients": fda.get("active_ingredients"),
                 "search_query": query,
@@ -389,25 +410,82 @@ async def smart_search(request):
                 "us_guideline": fda,
                 "kr_dur": dur,
                 "dur_count": len(dur),
-                "dur_summary": _build_dur_summary(dur),
+                "dur_summary": dur_summary,
                 "maps_key": os.getenv("GOOGLE_MAPS_API_KEY"),
             },
-        )
+            "data": {
+                "fda_data": fda,
+                "dur_data": dur,
+                "dur_summary": dur_summary,
+            },
+        }
 
     if category == "general_medical":
-        return render(
-            request,
-            "general_result.html",
-            {
+        return {
+            "status": "ok",
+            "query": query,
+            "category": category,
+            "cache_source": cache_source,
+            "template": "general_result.html",
+            "context": {
                 "query": query,
                 "answer": final_answer,
             },
+            "data": {
+                "answer": final_answer,
+            },
+        }
+
+    return {
+        "status": "error",
+        "query": query,
+        "category": category,
+        "cache_source": cache_source,
+        "message": final_answer or "요청을 처리할 수 없습니다.",
+    }
+
+
+async def smart_search(request):
+    query = request.GET.get("q") or request.POST.get("q")
+    if not query:
+        return HttpResponse("<script>alert('검색어를 입력하세요.'); history.back();</script>")
+
+    payload = await _run_search_pipeline(request, query)
+    if payload.get("status") != "ok":
+        return render(request, "error.html", {"message": payload.get("message", "요청을 처리할 수 없습니다.")})
+
+    return render(request, payload["template"], payload["context"])
+
+
+async def smart_search_api(request):
+    query = request.GET.get("q") or request.POST.get("q")
+    if not query:
+        return JsonResponse(
+            {"status": "error", "message": "q is required"},
+            status=400,
         )
 
-    return render(
-        request,
-        "error.html",
-        {"message": final_answer or "?붿껌??泥섎━?????놁뒿?덈떎."},
+    payload = await _run_search_pipeline(request, query)
+    if payload.get("status") != "ok":
+        return JsonResponse(
+            {
+                "status": "error",
+                "query": query,
+                "category": payload.get("category"),
+                "cache_source": payload.get("cache_source"),
+                "message": payload.get("message", "요청을 처리할 수 없습니다."),
+            },
+            status=500,
+        )
+
+    return JsonResponse(
+        {
+            "status": "success",
+            "query": payload.get("query", query),
+            "category": payload.get("category"),
+            "cache_source": payload.get("cache_source"),
+            "data": payload.get("data", {}),
+        }
     )
 
 
