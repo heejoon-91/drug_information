@@ -101,6 +101,10 @@ _SYMPTOM_INGREDIENT_EXCLUDE = {
     },
 }
 
+_PERSONALIZATION_CANDIDATE_LIMIT = 15
+_SAFE_DISPLAY_LIMIT = 5
+_BLOCKED_DISPLAY_LIMIT = 5
+
 
 def _to_fda_symptom_terms(symptom_term: str):
     token = str(symptom_term or "").strip().lower()
@@ -188,6 +192,20 @@ def _build_user_safety_profile_hash(user_profile: dict) -> str:
 def _build_ingredient_hash(ingredients) -> str:
     normalized = _normalize_cache_tokens(ingredients or [])
     return SupabaseService.stable_hash_payload(normalized)
+
+
+def _compose_personalization_candidates(
+    preferred_ingredients,
+    all_ingredients,
+    backup_ingredients=None,
+    limit: int = _PERSONALIZATION_CANDIDATE_LIMIT,
+):
+    merged = canonicalize_ingredient_list(
+        list(preferred_ingredients or [])
+        + list(backup_ingredients or [])
+        + list(all_ingredients or [])
+    )
+    return merged[: max(int(limit or 0), 1)]
 
 
 def _is_excluded_ingredient_for_symptom(symptom_term: str, ingredient_name: str) -> bool:
@@ -654,10 +672,10 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
             )
             selected_ingredients = canonicalize_ingredient_list(
                 cached_selection.get("ingredient_candidates") or []
-            )[:5]
+            )[:_PERSONALIZATION_CANDIDATE_LIMIT]
             backup_ingredients = canonicalize_ingredient_list(
                 cached_selection.get("backup_ingredient_candidates") or []
-            )[:5]
+            )[:_PERSONALIZATION_CANDIDATE_LIMIT]
             ingredient_efficacy_map = (
                 cached_selection.get("ingredient_efficacy_map")
                 if isinstance(cached_selection.get("ingredient_efficacy_map"), dict)
@@ -740,20 +758,22 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
                 selected_ingredients = await AIService.select_direct_symptom_ingredients(
                     symptom=db_symptom_term or keyword or query,
                     candidates=scored_candidates,
-                    top_n=5,
+                    top_n=_PERSONALIZATION_CANDIDATE_LIMIT,
                 )
-                selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[:5]
+                selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[
+                    :_PERSONALIZATION_CANDIDATE_LIMIT
+                ]
                 selected_ingredients = [
                     token
                     for token in selected_ingredients
                     if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
                 ]
-                if len(selected_ingredients) < 5 and fda_candidates:
+                if len(selected_ingredients) < _PERSONALIZATION_CANDIDATE_LIMIT and fda_candidates:
                     for token in fda_candidates:
                         if token in selected_ingredients:
                             continue
                         selected_ingredients.append(token)
-                        if len(selected_ingredients) >= 5:
+                        if len(selected_ingredients) >= _PERSONALIZATION_CANDIDATE_LIMIT:
                             break
                 logger.info(
                     "Symptom direct ingredient selection via LLM: selected=%d from_candidates=%d",
@@ -779,7 +799,7 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
                     for token in all_ingredients
                     if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
                 ]
-                selected_ingredients = all_ingredients[:5]
+                selected_ingredients = all_ingredients[:_PERSONALIZATION_CANDIDATE_LIMIT]
             else:
                 all_ingredients = canonicalize_ingredient_list(
                     [item["ingredient"] for item in scored_candidates] + list(fda_candidates)
@@ -790,8 +810,12 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
                     if not _is_excluded_ingredient_for_symptom(db_symptom_term, token)
                 ]
 
-            selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[:5]
-            backup_ingredients = canonicalize_ingredient_list(selected_ingredients[5:10])[:5]
+            selected_ingredients = canonicalize_ingredient_list(selected_ingredients)[
+                :_PERSONALIZATION_CANDIDATE_LIMIT
+            ]
+            backup_ingredients = canonicalize_ingredient_list(
+                all_ingredients[_PERSONALIZATION_CANDIDATE_LIMIT : _PERSONALIZATION_CANDIDATE_LIMIT * 2]
+            )[:_PERSONALIZATION_CANDIDATE_LIMIT]
             await SupabaseService.set_symptom_selection_cache(
                 symptom_key=symptom_cache_key,
                 symptom_term=db_symptom_term,
@@ -801,8 +825,14 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
                 ingredient_efficacy_map=ingredient_efficacy_map,
             )
 
-        fda_ingredients = selected_ingredients[:5]
-        ingredient_cache_hash = _build_ingredient_hash(fda_ingredients)
+        personalization_candidates = _compose_personalization_candidates(
+            preferred_ingredients=selected_ingredients,
+            all_ingredients=all_ingredients,
+            backup_ingredients=backup_ingredients,
+            limit=_PERSONALIZATION_CANDIDATE_LIMIT,
+        )
+        preferred_display_candidates = personalization_candidates[:_SAFE_DISPLAY_LIMIT]
+        ingredient_cache_hash = _build_ingredient_hash(personalization_candidates)
         final_cache_key = SupabaseService.build_personalized_symptom_cache_key(
             symptom_key=symptom_cache_key,
             profile_hash=profile_cache_hash,
@@ -812,11 +842,11 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
         logger.info(
             f"Symptom raw='{query}', db_term='{db_symptom_term}', keyword='{keyword}' "
             f"ingredients extracted={len(all_ingredients)}, "
-            f"primary_targets={len(fda_ingredients)}, backup_targets={len(backup_ingredients)}"
+            f"primary_targets={len(preferred_display_candidates)}, personalization_pool={len(personalization_candidates)}"
         )
         logger.info(
-            "Symptom selected ingredients (top10): %s",
-            ", ".join(selected_ingredients) if selected_ingredients else "(none)",
+            "Symptom personalization candidates (top15): %s",
+            ", ".join(personalization_candidates[:15]) if personalization_candidates else "(none)",
         )
         logger.info(
             "Symptom FDA candidates (top10): %s",
@@ -825,11 +855,11 @@ async def retrieve_data_node(state: AgentState) -> AgentState:
 
         return {
             "all_ingredient_candidates": all_ingredients,
-            "ingredient_candidates": selected_ingredients,
+            "ingredient_candidates": personalization_candidates,
             "backup_ingredient_candidates": backup_ingredients,
             "ingredient_efficacy_map": ingredient_efficacy_map,
             "symptom_term": db_symptom_term,
-            "fda_data": fda_ingredients,
+            "fda_data": preferred_display_candidates,
             "user_profile": user_profile_data,
             "cache_key": final_cache_key,
             "cache_source": cache_source,
@@ -1005,14 +1035,21 @@ async def generate_symptom_answer_node(state: AgentState) -> AgentState:
         else:
             safe_ingredients.append(entry)
 
-    # UX priority:
-    # - Keep up to 10 actionable ingredients as product-page candidates.
-    # - The product page displays up to 5 cards and backfills from this candidate pool.
-    # - Keep blocked ingredients for safety explanation.
-    max_safe_candidates = 10
-    ingredients_data = safe_ingredients[:max_safe_candidates] + blocked_ingredients
+    # Personalization priority:
+    # - Evaluate the broader candidate pool first.
+    # - Show up to 5 takeable/caution ingredients when possible.
+    # - If none are safe, surface blocked ingredients so the user still sees why.
+    visible_safe_ingredients = safe_ingredients[:_SAFE_DISPLAY_LIMIT]
+    visible_blocked_ingredients = blocked_ingredients[:_BLOCKED_DISPLAY_LIMIT]
+    if visible_safe_ingredients:
+        ingredients_data = visible_safe_ingredients + visible_blocked_ingredients
+    else:
+        ingredients_data = visible_blocked_ingredients
 
-    profile_tail = _build_profile_reflection_tail(state.get("user_profile"), ingredients_data)
+    profile_tail = _build_profile_reflection_tail(
+        state.get("user_profile"),
+        safe_ingredients + blocked_ingredients,
+    )
     final_answer = summary + profile_tail if profile_tail else summary
 
     final_cache_key = str(state.get("final_cache_key") or "").strip()
