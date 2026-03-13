@@ -10,13 +10,3 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-
-  - package-ecosystem: "pip"
-    directory: "/backend_django"
-    schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "pip"
-    directory: "/api_fastapi"
-    schedule:
-      interval: "weekly"
