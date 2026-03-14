@@ -6,12 +6,17 @@ from openai import AsyncOpenAI
 from prompts.system_prompts import INTENT_CLASS_PROMPT
 from prompts.answer_prompts_v2 import SYMPTOM_RESPONSE_PROMPT_V2
 from services.ingredient_utils import canonicalize_ingredient_name
+from services.local_model_service import LocalModelService
 
 logger = logging.getLogger(__name__)
 
 
 class AIService:
     _client = None
+
+    @classmethod
+    def is_local_mode(cls) -> bool:
+        return LocalModelService.is_enabled()
 
     @staticmethod
     def _to_plain_text(text: str) -> str:
@@ -32,6 +37,8 @@ class AIService:
 
     @classmethod
     def get_client(cls):
+        if cls.is_local_mode():
+            return None
         if cls._client:
             return cls._client
         try:
@@ -46,6 +53,8 @@ class AIService:
     @classmethod
     async def classify_intent_v2(cls, query: str):
         """질문 분류 및 영어 키워드, 캐시 키 동시 추출 (통합 라우터)"""
+        if cls.is_local_mode():
+            return await LocalModelService.classify_intent(query)
         client = cls.get_client()
         if not client:
             return {"category": "general_medical", "keyword": query, "cache_key": query}
@@ -91,6 +100,8 @@ class AIService:
         Normalize product-focused query into a single FDA-searchable term.
         Returns English brand/generic when possible (e.g., Tylenol, acetaminophen).
         """
+        if cls.is_local_mode():
+            return await LocalModelService.normalize_product_keyword(query, hint_keyword)
         fallback = str(hint_keyword or query or "").strip()
         client = cls.get_client()
         if not client:
@@ -234,6 +245,13 @@ class AIService:
         - list[str]
         - list[{"ingredient": str, "score": int}]
         """
+        if cls.is_local_mode():
+            return await LocalModelService.select_direct_symptom_ingredients(
+                symptom=symptom,
+                candidates=candidates,
+                top_n=top_n,
+            )
+
         normalized = []
         seen = set()
 
@@ -852,3 +870,196 @@ class AIService:
         except Exception as e:
             logger.error(f"Error in translate_purposes: {e}")
             return purposes
+
+
+_ORIGINAL_CLASSIFY_INTENT_V2 = AIService.classify_intent_v2.__func__
+_ORIGINAL_NORMALIZE_PRODUCT_KEYWORD = AIService.normalize_product_keyword.__func__
+_ORIGINAL_CANONICALIZE_SYMPTOM_TERM = AIService.canonicalize_symptom_term.__func__
+_ORIGINAL_SELECT_DIRECT_SYMPTOM_INGREDIENTS = AIService.select_direct_symptom_ingredients.__func__
+_ORIGINAL_GENERATE_SYMPTOM_ANSWER = AIService.generate_symptom_answer.__func__
+_ORIGINAL_GENERATE_GENERAL_ANSWER = AIService.generate_general_answer.__func__
+_ORIGINAL_GENERATE_WEB_SEARCH_ANSWER = AIService.generate_web_search_answer.__func__
+_ORIGINAL_RECOMMEND_INGREDIENTS_FOR_SYMPTOM = AIService.recommend_ingredients_for_symptom.__func__
+_ORIGINAL_NORMALIZE_SYMPTOM_QUERY = AIService.normalize_symptom_query.__func__
+_ORIGINAL_GET_SYMPTOM_SYNONYMS = AIService.get_symptom_synonyms.__func__
+_ORIGINAL_GET_SYNONYMS = AIService.get_synonyms.__func__
+_ORIGINAL_BULK_SUMMARIZE_FDA_WARNINGS = AIService.bulk_summarize_fda_warnings.__func__
+_ORIGINAL_TRANSLATE_PURPOSES = AIService.translate_purposes.__func__
+
+
+async def _classify_intent_v2_with_local(cls, query: str):
+    if cls.is_local_mode():
+        return await LocalModelService.classify_intent(query)
+    return await _ORIGINAL_CLASSIFY_INTENT_V2(cls, query)
+
+
+async def _normalize_product_keyword_with_local(cls, query: str, hint_keyword: str = ""):
+    if cls.is_local_mode():
+        return await LocalModelService.normalize_product_keyword(query, hint_keyword)
+    return await _ORIGINAL_NORMALIZE_PRODUCT_KEYWORD(cls, query, hint_keyword)
+
+
+async def _canonicalize_symptom_term_with_local(cls, query: str, hint_keyword: str = ""):
+    if cls.is_local_mode():
+        return await LocalModelService.canonicalize_symptom_term(query, hint_keyword)
+    return await _ORIGINAL_CANONICALIZE_SYMPTOM_TERM(cls, query, hint_keyword)
+
+
+async def _select_direct_symptom_ingredients_with_local(
+    cls,
+    symptom: str,
+    candidates,
+    top_n: int = 5,
+):
+    if cls.is_local_mode():
+        return await LocalModelService.select_direct_symptom_ingredients(
+            symptom=symptom,
+            candidates=candidates,
+            top_n=top_n,
+        )
+    return await _ORIGINAL_SELECT_DIRECT_SYMPTOM_INGREDIENTS(
+        cls,
+        symptom,
+        candidates,
+        top_n,
+    )
+
+
+async def _generate_symptom_answer_with_local(cls, symptom, data, user_profile=None):
+    if cls.is_local_mode():
+        return await LocalModelService.generate_symptom_answer(
+            symptom=symptom,
+            data=data,
+            user_profile=user_profile,
+        )
+    return await _ORIGINAL_GENERATE_SYMPTOM_ANSWER(cls, symptom, data, user_profile)
+
+
+async def _generate_general_answer_with_local(cls, query: str):
+    if cls.is_local_mode():
+        return await LocalModelService.generate_general_answer(query)
+    return await _ORIGINAL_GENERATE_GENERAL_ANSWER(cls, query)
+
+
+async def _generate_web_search_answer_with_local(cls, query: str):
+    if cls.is_local_mode():
+        return await LocalModelService.generate_web_search_answer(query)
+    return await _ORIGINAL_GENERATE_WEB_SEARCH_ANSWER(cls, query)
+
+
+async def _recommend_ingredients_for_symptom_with_local(cls, symptom: str):
+    if cls.is_local_mode():
+        return await LocalModelService.recommend_ingredients_for_symptom(symptom)
+    return await _ORIGINAL_RECOMMEND_INGREDIENTS_FOR_SYMPTOM(cls, symptom)
+
+
+async def _normalize_symptom_query_with_local(cls, query: str):
+    if cls.is_local_mode():
+        return await LocalModelService.normalize_symptom_query(query)
+    return await _ORIGINAL_NORMALIZE_SYMPTOM_QUERY(cls, query)
+
+
+async def _get_symptom_synonyms_with_local(cls, symptom: str):
+    if cls.is_local_mode():
+        return await LocalModelService.get_symptom_synonyms(symptom)
+    return await _ORIGINAL_GET_SYMPTOM_SYNONYMS(cls, symptom)
+
+
+async def _get_synonyms_with_local(cls, ingredient: str):
+    if cls.is_local_mode():
+        return await LocalModelService.get_synonyms(ingredient)
+    return await _ORIGINAL_GET_SYNONYMS(cls, ingredient)
+
+
+async def _bulk_summarize_fda_warnings_with_local(cls, warnings_dict: dict):
+    if cls.is_local_mode():
+        return await LocalModelService.bulk_summarize_fda_warnings(warnings_dict)
+    return await _ORIGINAL_BULK_SUMMARIZE_FDA_WARNINGS(cls, warnings_dict)
+
+
+async def _translate_purposes_with_local(cls, purposes: list):
+    if cls.is_local_mode():
+        return await LocalModelService.translate_purposes(purposes)
+    return await _ORIGINAL_TRANSLATE_PURPOSES(cls, purposes)
+
+
+async def _translate_profile_fields_to_english(cls, meds: str, allergies: str, diseases: str):
+    if cls.is_local_mode():
+        return await LocalModelService.translate_profile_fields_to_english(
+            meds=meds,
+            allergies=allergies,
+            diseases=diseases,
+        )
+    values = {
+        "meds": str(meds or "").strip(),
+        "allergies": str(allergies or "").strip(),
+        "diseases": str(diseases or "").strip(),
+    }
+    translatable = {
+        key: value
+        for key, value in values.items()
+        if value and value != "Not provided" and re.search(r"[가-힣]", value)
+    }
+    if not translatable:
+        return values
+
+    client = cls.get_client()
+    if not client:
+        return values
+
+    prompt = (
+        "Translate the following user medical profile fields into clear English.\n"
+        "Rules:\n"
+        "- Preserve medicine names, strengths, bracketed codes, and parentheses.\n"
+        "- Keep factual content intact.\n"
+        "- If a field is already in English, keep it as-is.\n"
+        "Return ONLY JSON with keys: meds, allergies, diseases."
+    )
+
+    try:
+        res = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a medical translator."},
+                {
+                    "role": "user",
+                    "content": f"{prompt}\n\n{json.dumps(values, ensure_ascii=False)}",
+                },
+            ],
+            temperature=0,
+            response_format={"type": "json_object"},
+        )
+        payload = json.loads(res.choices[0].message.content or "{}")
+        if isinstance(payload, dict):
+            for key in ("meds", "allergies", "diseases"):
+                translated = str(payload.get(key) or "").strip()
+                if translated:
+                    values[key] = translated
+    except Exception as e:
+        logger.warning(f"profile field translation failed: {e}")
+
+    return values
+
+
+AIService.classify_intent_v2 = classmethod(_classify_intent_v2_with_local)
+AIService.normalize_product_keyword = classmethod(_normalize_product_keyword_with_local)
+AIService.canonicalize_symptom_term = classmethod(_canonicalize_symptom_term_with_local)
+AIService.select_direct_symptom_ingredients = classmethod(
+    _select_direct_symptom_ingredients_with_local
+)
+AIService.generate_symptom_answer = classmethod(_generate_symptom_answer_with_local)
+AIService.generate_general_answer = classmethod(_generate_general_answer_with_local)
+AIService.generate_web_search_answer = classmethod(_generate_web_search_answer_with_local)
+AIService.recommend_ingredients_for_symptom = classmethod(
+    _recommend_ingredients_for_symptom_with_local
+)
+AIService.normalize_symptom_query = classmethod(_normalize_symptom_query_with_local)
+AIService.get_symptom_synonyms = classmethod(_get_symptom_synonyms_with_local)
+AIService.get_synonyms = classmethod(_get_synonyms_with_local)
+AIService.bulk_summarize_fda_warnings = classmethod(
+    _bulk_summarize_fda_warnings_with_local
+)
+AIService.translate_purposes = classmethod(_translate_purposes_with_local)
+AIService.translate_profile_fields_to_english = classmethod(
+    _translate_profile_fields_to_english
+)

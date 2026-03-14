@@ -201,36 +201,16 @@ async def _translate_profile_fields_to_english(meds: str, allergies: str, diseas
     try:
         from services.ai_service_v2 import AIService
 
-        client = AIService.get_client()
-        if not client:
-            return values
-
-        prompt = (
-            "Translate the following user medical profile fields into clear English.\n"
-            "Rules:\n"
-            "- Preserve medicine names, strengths, bracketed codes, and parentheses.\n"
-            "- Keep factual content intact.\n"
-            "- If a field is already in English, keep it as-is.\n"
-            "Return ONLY JSON with keys: meds, allergies, diseases."
+        translated = await AIService.translate_profile_fields_to_english(
+            meds=values["meds"],
+            allergies=values["allergies"],
+            diseases=values["diseases"],
         )
-        res = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a medical translator."},
-                {
-                    "role": "user",
-                    "content": f"{prompt}\n\n{json.dumps(values, ensure_ascii=False)}",
-                },
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-        payload = json.loads(res.choices[0].message.content or "{}")
-        if isinstance(payload, dict):
+        if isinstance(translated, dict):
             for key in ("meds", "allergies", "diseases"):
-                translated = str(payload.get(key) or "").strip()
-                if translated:
-                    values[key] = translated
+                translated_value = str(translated.get(key) or "").strip()
+                if translated_value:
+                    values[key] = translated_value
     except Exception as e:
         logger.warning(f"profile field translation failed: {e}")
 
