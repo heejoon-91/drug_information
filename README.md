@@ -1,142 +1,142 @@
 <div align="center">
 
-# 🚑 AI 증상 기반 약품 추천 서비스 (SKN22-4th-1Team)
+# ?�� AI 증상 기반 ?�품 추천 ?�비??(SKN22-4th-1Team)
 
 [![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Django](https://img.shields.io/badge/Django-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com)
 [![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)](https://openai.com)
-[![LangChain](https://img.shields.io/badge/🦜_LangChain-1C3C3C?style=for-the-badge)](https://langchain.com)
+[![LangChain](https://img.shields.io/badge/?��_LangChain-1C3C3C?style=for-the-badge)](https://langchain.com)
 [![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com)
 
 <br/>
 
-**사용자의 증상을 이해하고 DUR(안전주의) 정보와 맞춤형 약품 및 주변 약국을 안내하는 스마트 의료/약국 AI 비서**
+**?�용?�의 증상???�해?�고 DUR(?�전주의) ?�보?� 맞춤???�품 �?주�? ?�국???�내?�는 ?�마???�료/?�국 AI 비서**
 
 </div>
 
 ---
 
 > [!CAUTION]
-> **⚠️ 의료 면책 조항 (Medical Disclaimer)**
+> **?�️ ?�료 면책 조항 (Medical Disclaimer)**
 > 
-> 본 시스템은 **OpenFDA, 공공데이터포털(KCD-9/DUR)** 데이터를 기반으로 정보를 제공하며, **의학적 진단이나 처방을 대신할 수 없습니다.**
+> �??�스?��? **OpenFDA, 공공?�이?�포??KCD-9/DUR)** ?�이?��? 기반?�로 ?�보�??�공?�며, **?�학??진단?�나 처방???�?�할 ???�습?�다.**
 > 
-> - 🔴 제공된 정보는 실시간 API 검색 결과이나, AI 가공 과정에서 부정확한 내용이 연출될 수 있습니다.
-> - 🔴 **모든 건강 관련 결정은 반드시 의사 또는 약사와 상담 후 진행하세요.**
-> - 🔴 기저질환, 임신 여부, 알레르기에 따른 부작용은 개인에 따라 상이하므로 참고용으로만 활용 바랍니다.
-> - 🔴 본 시스템 사용으로 인한 어떠한 피해에 대해서도 책임지지 않습니다.
+> - ?�� ?�공???�보???�시�?API 검??결과?�나, AI 가�?과정?�서 부?�확???�용???�출?????�습?�다.
+> - ?�� **모든 건강 관??결정?� 반드???�사 ?�는 ?�사?� ?�담 ??진행?�세??**
+> - ?�� 기�?질환, ?�신 ?��?, ?�레르기???�른 부?�용?� 개인???�라 ?�이?��?�?참고?�으로만 ?�용 바랍?�다.
+> - ?�� �??�스???�용?�로 ?�한 ?�떠???�해???�?�서??책임지지 ?�습?�다.
 
 ---
 
-## 📋 목차
+## ?�� 목차
 
-- [기술 스택](#-기술-스택)
-- [프로젝트 구조](#-프로젝트-구조)
-- [시스템 아키텍처](#-시스템-아키텍처)
-- [단계별 상세 설명](#단계별-상세-설명)
-- [작동 데모](#-작동-데모)
-- [트러블슈팅 및 극복 사례](#-트러블슈팅-및-극복-사례)
-- [향후 로드맵](#-향후-로드맵)
-- [실행 방법](#-실행-방법)
-- [질문 예시](#-질문-예시)
-- [주요 설정](#-주요-설정)
-- [팀원 소개](#-팀원-소개)
+- [기술 ?�택](#-기술-?�택)
+- [?�로?�트 구조](#-?�로?�트-구조)
+- [?�스???�키?�처](#-?�스???�키?�처)
+- [?�계�??�세 ?�명](#?�계�??�세-?�명)
+- [?�동 ?�모](#-?�동-?�모)
+- [?�러블슈??�?극복 ?��?](#-?�러블슈??�?극복-?��?)
+- [?�후 로드�?(#-?�후-로드�?
+- [?�행 방법](#-?�행-방법)
+- [질문 ?�시](#-질문-?�시)
+- [주요 ?�정](#-주요-?�정)
+- [?�???�개](#-?�???�개)
 
 ---
 
-## 🛠 기술 스택
+## ?�� 기술 ?�택
 
-| 분류 | 기술 | 설명 |
+| 분류 | 기술 | ?�명 |
 |:---:|:---:|:---|
-| 🖥️ **Backend & UI** | Django | MVT 아키텍처 기반 웹페이지 인터페이스 및 서비스 통합 |
-| 🤖 **Orchestrator** | LangGraph | State Graph를 활용한 에이전트 단계 제어 (분류/검색/생성) |
-| ✍️ **Agent Core** | GPT-4o-mini | 의도 분류 로직(Classifier) 및 질의응답 응답(Generator) |
-| ☁️ **External API** | OpenFDA | 미국 FDA 약품 라벨 및 가이드라인 DB 검색 연동 |
-| 🔧 **Data & Auth** | Supabase (PostgreSQL) | 유저 인증 및 프로필/DUR 관리 데이터 소스 |
-| 📡 **External API** | Google Maps API | 내 주변 반경 내 약국 및 병원 확인 |
+| ?���?**Backend & UI** | Django | MVT ?�키?�처 기반 ?�페?��? ?�터?�이??�??�비???�합 |
+| ?�� **Orchestrator** | LangGraph | State Graph�??�용???�이?�트 ?�계 ?�어 (분류/검???�성) |
+| ?�️ **Agent Core** | GPT-4o-mini | ?�도 분류 로직(Classifier) �?질의?�답 ?�답(Generator) |
+| ?�️ **External API** | OpenFDA | 미국 FDA ?�품 ?�벨 �?가?�드?�인 DB 검???�동 |
+| ?�� **Data & Auth** | Supabase (PostgreSQL) | ?��? ?�증 �??�로??DUR 관�??�이???�스 |
+| ?�� **External API** | Google Maps API | ??주�? 반경 ???�국 �?병원 ?�인 |
 
 ---
 
-## 📁 프로젝트 구조
+## ?�� ?�로?�트 구조
 
 ```text
-/Users/eom/내 드라이브/workspaces/SKN22-4th-1Team
-├── 🚀 skn22_4th_prj/               # Django 백엔드 메인 어플리케이션
-│   ├── chat/                       # 웹 UI 제공 기능 및 컨트롤러 모듈 (Views)
-│   ├── drug/                       # DUR 검증, FDA 경고 데이터 질의 등 의약품 앱
-│   ├── graph_agent/                # LangGraph 인프라 로직
-│   │   ├── builder_v2.py           # 노드 매핑 및 그래프 컴파일 (Router)
-│   │   ├── nodes_v2.py             # 각 단계의 작업 정의 및 실행 (State 갱신)
-│   │   └── state.py                # 에이전트 상태 인터페이스 정의
-│   ├── prompts/                    # LLM 페르소나 및 응답 구성 템플릿 파일
-│   ├── scripts/                    # 유틸리티 및 테스트 프로파일링 스크립트 모음
-│   ├── services/                   # 주요 비즈니스 및 API 연동 로직
-│   │   ├── ai_service_v2.py        # LangChain LLM 통신 클래스
-│   │   ├── map_service.py          # Google Map 연동 및 약국 추천
-│   │   ├── drug_service.py         # DUR 및 외부 서버 정보 가공 서비스
-│   │   └── user_service.py         # 유저 메디컬 프로필(알레르기, 복약) 관리
-│   ├── skn22_4th_prj/              # Django Main Settings 및 URL Routing
-│   └── users/                      # 인증 및 프로필 전용 App
-├── 📋 requirements.txt             # 패키지 의존성
-├── 📂 data_pipeline/               # KCD-9 및 DB 백업/복원 및 파이프라인 동기화
-├── .env                            # 환경 설정 (API Key 등)
-└── 📊 04_test_plan_results/        # 테스트 관련 폴더
+/Users/eom/???�라?�브/workspaces/SKN22-4th-1Team
+?��??� ?? otc_info/               # Django 백엔??메인 ?�플리�??�션
+??  ?��??� chat/                       # ??UI ?�공 기능 �?컨트롤러 모듈 (Views)
+??  ?��??� drug/                       # DUR 검�? FDA 경고 ?�이??질의 ???�약????
+??  ?��??� graph_agent/                # LangGraph ?�프??로직
+??  ??  ?��??� builder_v2.py           # ?�드 매핑 �?그래??컴파??(Router)
+??  ??  ?��??� nodes_v2.py             # �??�계???�업 ?�의 �??�행 (State 갱신)
+??  ??  ?��??� state.py                # ?�이?�트 ?�태 ?�터?�이???�의
+??  ?��??� prompts/                    # LLM ?�르?�나 �??�답 구성 ?�플�??�일
+??  ?��??� scripts/                    # ?�틸리티 �??�스???�로?�일�??�크립트 모음
+??  ?��??� services/                   # 주요 비즈?�스 �?API ?�동 로직
+??  ??  ?��??� ai_service_v2.py        # LangChain LLM ?�신 ?�래??
+??  ??  ?��??� map_service.py          # Google Map ?�동 �??�국 추천
+??  ??  ?��??� drug_service.py         # DUR �??��? ?�버 ?�보 가�??�비??
+??  ??  ?��??� user_service.py         # ?��? 메디�??�로???�레르기, 복약) 관�?
+??  ?��??� otc_info/              # Django Main Settings �?URL Routing
+??  ?��??� users/                      # ?�증 �??�로???�용 App
+?��??� ?�� requirements.txt             # ?�키지 ?�존??
+?��??� ?�� data_pipeline/               # KCD-9 �?DB 백업/복원 �??�이?�라???�기??
+?��??� .env                            # ?�경 ?�정 (API Key ??
+?��??� ?�� 04_test_plan_results/        # ?�스??관???�더
 ```
 
 ---
 
-## 🔄 시스템 아키텍처
+## ?�� ?�스???�키?�처
 
-본 프로젝트는 **LangGraph (Router+State Machine 패턴)** 기반의 RAG 시스템으로, 유저 정보(메디컬 프로필)와 API 조회값을 결합해 안전 필터링 단계를 강제합니다.
+�??�로?�트??**LangGraph (Router+State Machine ?�턴)** 기반??RAG ?�스?�으�? ?��? ?�보(메디�??�로???� API 조회값을 결합???�전 ?�터�??�계�?강제?�니??
 
 ```mermaid
 graph TD
-    %% 사용자 및 진입점
-    User["👤 사용자"] -->|"질의 또는 위치 정보"| DjangoUrls["skn22_4th_prj/urls.py"]
-    DjangoUrls -->|"경로 지정"| Views["chat/views.py"]
+    %% ?�용??�?진입??
+    User["?�� ?�용??] -->|"질의 ?�는 ?�치 ?�보"| DjangoUrls["otc_info/urls.py"]
+    DjangoUrls -->|"경로 지??| Views["chat/views.py"]
 
-    subgraph Security_User ["🛡️ Authentication & Profile"]
-        Views -.->|"메디컬 정보 획득"| UserSvc["user_service.py"]
-        UserSvc -->|"Read/Write"| Supabase[("☁️ Supabase (PostgreSQL)")]
+    subgraph Security_User ["?���?Authentication & Profile"]
+        Views -.->|"메디�??�보 ?�득"| UserSvc["user_service.py"]
+        UserSvc -->|"Read/Write"| Supabase[("?�️ Supabase (PostgreSQL)")]
     end
 
-    subgraph LangGraph ["⛓️ Graph Agent Layer (graph_agent/)"]
+    subgraph LangGraph ["?�️ Graph Agent Layer (graph_agent/)"]
         Builder["builder_v2.py"]
         Nodes["nodes_v2.py"]
         State["state.py"]
         Prompts["prompts/"]
     end
     
-    subgraph Services ["⚡ Service & Logic Layer (services/)"]
+    subgraph Services ["??Service & Logic Layer (services/)"]
         MapSvc["map_service.py"]
         AISvc["ai_service_v2.py"]
         DrugSvc["drug_service.py"]
     end
 
-    %% Flow: AI 응답 파이프라인
-    Views -->|"그래프 체인 시작"| Builder
-    Builder -->|"상태 관리"| State
-    State -->|"분기 판단"| Nodes
+    %% Flow: AI ?�답 ?�이?�라??
+    Views -->|"그래??체인 ?�작"| Builder
+    Builder -->|"?�태 관�?| State
+    State -->|"분기 ?�단"| Nodes
     Nodes -.->|"Prompts 참조"| Prompts
 
     %% Agent External calls (Data Retrieval & AI)
-    Nodes -->|"검색/추론 요청"| DrugSvc
-    Nodes -->|"LLM 요약/분류"| AISvc
+    Nodes -->|"검??추론 ?�청"| DrugSvc
+    Nodes -->|"LLM ?�약/분류"| AISvc
     
-    %% Flow: 비동기 약국 탐색 파이프라인
-    Views -->|"비동기 위치 탐색 (독립 실행)"| MapSvc
+    %% Flow: 비동�??�국 ?�색 ?�이?�라??
+    Views -->|"비동�??�치 ?�색 (?�립 ?�행)"| MapSvc
     
     %% APIs
     DrugSvc -->|"HTTP"| ExtPine[("FDA / Public API")]
-    DrugSvc -->|"HTTP"| ExtFDA[("📡 OpenFDA & DUR API")]
-    MapSvc -->|"HTTP"| ExtMaps[("🗺️ Google Maps API")]
+    DrugSvc -->|"HTTP"| ExtFDA[("?�� OpenFDA & DUR API")]
+    MapSvc -->|"HTTP"| ExtMaps[("?���?Google Maps API")]
 
 
 ```
 
-### 🌊 출력 파이프라인 (Data Pipeline Flow)
+### ?�� 출력 ?�이?�라??(Data Pipeline Flow)
 
-사용자가 증상(예: "머리가 아프고 열이 나요")을 질의했을 때, 시스템이 정보를 수집하고 답변을 출력할 때까지의 과정입니다.
+?�용?��? 증상(?? "머리가 ?�프�??�이 ?�요")??질의?�을 ?? ?�스?�이 ?�보�??�집?�고 ?��???출력???�까지??과정?�니??
 
 ```mermaid
 sequenceDiagram
@@ -147,132 +147,132 @@ sequenceDiagram
     participant API as Supabase & FDA/DUR API
     participant LLM as GPT-4o-mini
 
-    U->>V: 1. 자연어 증상 검색
-    V->>R: 2. Graph Agent에 질의 및 사용자 세션 정보 전달
+    U->>V: 1. ?�연??증상 검??
+    V->>R: 2. Graph Agent??질의 �??�용???�션 ?�보 ?�달
     
-    R->>LLM: 3. 사용자 의도 및 상태 분류
+    R->>LLM: 3. ?�용???�도 �??�태 분류
     LLM-->>R: 분석 결과 반환
     
     Note left of API: Data Retrieval (병렬 처리)
-    R->>API: 4. 유저 프로필 조회 및 성분탐색
-    API-->>R: 추천 성분 및 DUR 반환
+    R->>API: 4. ?��? ?�로??조회 �??�분?�색
+    API-->>R: 추천 ?�분 �?DUR 반환
     
-    R->>LLM: 5. 수집 제약 데이터 기반 답변 요청
-    LLM-->>R: 환자 맞춤형 최종 답변
+    R->>LLM: 5. ?�집 ?�약 ?�이??기반 ?��? ?�청
+    LLM-->>R: ?�자 맞춤??최종 ?��?
     
-    R-->>V: 6. 생성 결과 반환 (답변 + 성분)
-    V-->>U: 7. 결과 화면(HTML) 출력
+    R-->>V: 6. ?�성 결과 반환 (?��? + ?�분)
+    V-->>U: 7. 결과 ?�면(HTML) 출력
     
-    Note right of MAP: 주변 약국 탐색
-    U->>V: [A] 사용자 장치 위치 전달 및 약국 요청
-    V->>MAP: [B] 반경 내 약국 탐색
-    MAP-->>V: 약국 위치 리스트 반환
-    V-->>U: [C] 지도 마커 및 약국 목록 렌더링
+    Note right of MAP: 주�? ?�국 ?�색
+    U->>V: [A] ?�용???�치 ?�치 ?�달 �??�국 ?�청
+    V->>MAP: [B] 반경 ???�국 ?�색
+    MAP-->>V: ?�국 ?�치 리스??반환
+    V-->>U: [C] 지??마커 �??�국 목록 ?�더�?
 ```
 
-### 🧩 주요 모듈 상세 설명
+### ?�� 주요 모듈 ?�세 ?�명
 
-- **애플리케이션 계층 (`chat/views.py`)**: 사용자 인터페이스 메인 진입점. 사용자의 입력이 들어오면 세션에서 환자 정보를 조회한 뒤 LangGraph의 런타임 진입점으로 넘깁니다.
+- **?�플리�??�션 계층 (`chat/views.py`)**: ?�용???�터?�이??메인 진입?? ?�용?�의 ?�력???�어?�면 ?�션?�서 ?�자 ?�보�?조회????LangGraph???��???진입?�으�??�깁?�다.
   
-- **상태 기계(Graph) 계층 (`graph_agent/`)**: LangGraph 프레임워크를 통해 상태 전이를 정의합니다.
-  - `builder_v2.py`: 질문의 카테고리(단순 제품 검색, 증상 기반 제품 추천, 일반 질의)에 맞게 엣지(Edge)와 노드를 연결.
-  - `nodes_v2.py`: 카테고리에 맞는 상세 검색(FDA Vector 검색, 공공데이터 Open API 검색) 노드를 정의합니다. 유저의 기저 질환 등 메디컬 프로필과 추출된 성분을 결합해, 추천 전 DUR 위반사항 여부를 거치도록 안전망을 구현했습니다.
+- **?�태 기계(Graph) 계층 (`graph_agent/`)**: LangGraph ?�레?�워?��? ?�해 ?�태 ?�이�??�의?�니??
+  - `builder_v2.py`: 질문??카테고리(?�순 ?�품 검?? 증상 기반 ?�품 추천, ?�반 질의)??맞게 ?��?(Edge)?� ?�드�??�결.
+  - `nodes_v2.py`: 카테고리??맞는 ?�세 검??FDA Vector 검?? 공공?�이??Open API 검?? ?�드�??�의?�니?? ?��???기�? 질환 ??메디�??�로?�과 추출???�분??결합?? 추천 ??DUR ?�반?�항 ?��?�?거치?�록 ?�전망을 구현?�습?�다.
 
-- **보안 및 인증 (`users/` & `Supabase RLS`)**: 환자 생명과 직결될 수 있는 '기록 데이터(기저질환, 알레르기 등)'의 보안 무결성을 최우선으로 합니다.
-  - 일반적인 백엔드 애플리케이션 계층 방어에 의존하지 않고, 데이터베이스 엔진(PostgreSQL)의 **RLS(Row Level Security, 행 수준 보안)** 정책을 적용했습니다.
-  - 사용자의 JWT 인증 토큰(User ID)이 일치하지 않는 경우, DB 엔진 레벨에서 애초에 타인의 의료 데이터를 읽거나 쓸 수 없도록 원천 차단하는 가장 견고한 보안 격리 방식을 구축했습니다.
+- **보안 �??�증 (`users/` & `Supabase RLS`)**: ?�자 ?�명�?직결?????�는 '기록 ?�이??기�?질환, ?�레르기 ??'??보안 무결?�을 최우?�으�??�니??
+  - ?�반?�인 백엔???�플리�??�션 계층 방어???�존?��? ?�고, ?�이?�베?�스 ?�진(PostgreSQL)??**RLS(Row Level Security, ???��? 보안)** ?�책???�용?�습?�다.
+  - ?�용?�의 JWT ?�증 ?�큰(User ID)???�치?��? ?�는 경우, DB ?�진 ?�벨?�서 ?�초???�?�의 ?�료 ?�이?��? ?�거???????�도�??�천 차단?�는 가??견고??보안 격리 방식??구축?�습?�다.
 
 ---
 
-## 단계별 상세 설명
+## ?�계�??�세 ?�명
 
 ### Phase 1: Classifier (Router Node)
-- **파일**: [nodes_v2.py](/skn22_4th_prj/graph_agent/nodes_v2.py)
-- **역할**: 
-    - 사용자의 질문 내용을 `symptom_recommendation`, `product_request`, `general_medical` 카테고리 중 하나로 분류합니다.
-    - 입력 오류이거나 메디컬 주제에 어긋나는 입력(Invalid)일 경우 조기에 방어합니다.
+- **?�일**: [nodes_v2.py](/otc_info/graph_agent/nodes_v2.py)
+- **??��**: 
+    - ?�용?�의 질문 ?�용??`symptom_recommendation`, `product_request`, `general_medical` 카테고리 �??�나�?분류?�니??
+    - ?�력 ?�류?�거??메디�?주제???�긋?�는 ?�력(Invalid)??경우 조기??방어?�니??
 
 ### Phase 2: User Context Integration
-- **파일**: [user_service.py](/skn22_4th_prj/services/user_service.py)
-- **역할**: 
-    - 인증된 유저라면 복약 중인 약물, 알레르기 항목, 나이 및 임신 여부 등의 사용자 프로필 텍스트를 현재 상태(State) 데이터에 적재합니다.
+- **?�일**: [user_service.py](/otc_info/services/user_service.py)
+- **??��**: 
+    - ?�증???��??�면 복약 중인 ?�물, ?�레르기 ??��, ?�이 �??�신 ?��? ?�의 ?�용???�로???�스?��? ?�재 ?�태(State) ?�이?�에 ?�재?�니??
 
 ### Phase 3: Data Retrieval (API Search)
-- **파일**: [drug_service.py](/skn22_4th_prj/services/drug_service.py)
-- **역할**: 
-    - 증상 키워드(예: 복통, 두통)는 OpenFDA API Search를 이용해 적합한 효능의 약품 성분 목록을 반환받습니다.
-    - 추출된 성분 후보군을 대상으로, **유저 프로필과 대조**하여 심평원 DUR API의 병용 금기 및 연령 주의정보를 HTTP 쿼리로 가져옵니다.
+- **?�일**: [drug_service.py](/otc_info/services/drug_service.py)
+- **??��**: 
+    - 증상 ?�워???? 복통, ?�통)??OpenFDA API Search�??�용???�합???�능???�품 ?�분 목록??반환받습?�다.
+    - 추출???�분 ?�보군을 ?�?�으�? **?��? ?�로?�과 ?��?*?�여 ?�평??DUR API??병용 금기 �??�령 주의?�보�?HTTP 쿼리�?가?�옵?�다.
 
 ### Phase 4: Generator & Action (Synthesis / Map)
-- **파일**: [prompts.py](/skn22_4th_prj/prompts/answer_prompts_v2.py) & [map_service.py](/skn22_4th_prj/services/map_service.py)
-- **역할**: 
-    - 취합된 안전/경고 리포트(DUR)와 약품의 성분 효과를 조합해, GPT-4o-mini 모델로 **가장 안전한 의사결정 방식의 최종 한국어 마크다운 답변**을 만들어 냅니다.
-    - 최종 답변이 완성되면 사용자의 현재 위치를 기반으로 구글 지도를 이용해 근교 약국을 시각화합니다.
+- **?�일**: [prompts.py](/otc_info/prompts/answer_prompts_v2.py) & [map_service.py](/otc_info/services/map_service.py)
+- **??��**: 
+    - 취합???�전/경고 리포??DUR)?� ?�품???�분 ?�과�?조합?? GPT-4o-mini 모델�?**가???�전???�사결정 방식??최종 ?�국??마크?�운 ?��?**??만들???�니??
+    - 최종 ?��????�성?�면 ?�용?�의 ?�재 ?�치�?기반?�로 구�? 지?��? ?�용??근교 ?�국???�각?�합?�다.
 
 ---
 
-## Router(Graph) Pattern의 장점
-1.  **의사결정의 다변화 지원**: 단순 검색은 바로 Database에서 꺼내오고, 복잡한 증상은 추론 및 필터링 노드를 여러 번 거치는 등 카테고리별로 비용 최적화가 가능합니다.
-2.  **안전 필터 체인(Chain of Safety)**: RAG 모델 환각(Hallucination)의 부작용을 막기 위해 모든 약국 추천 카테고리는 DUR API 조회라는 **필수 노드**를 거치게 설계해, 모델 임의로 금기 약품을 추천하는 현상을 100% 차단합니다.
-3.  **명시적 에러 핸들링**: 특정 API 호출이 실패하더라도 다른 경로로 폴백(Fallback)할 수 있는 구조적 분기능력을 보유합니다.
+## Router(Graph) Pattern???�점
+1.  **?�사결정???��???지??*: ?�순 검?��? 바로 Database?�서 꺼내?�고, 복잡??증상?� 추론 �??�터�??�드�??�러 �?거치????카테고리별로 비용 최적?��? 가?�합?�다.
+2.  **?�전 ?�터 체인(Chain of Safety)**: RAG 모델 ?�각(Hallucination)??부?�용??막기 ?�해 모든 ?�국 추천 카테고리??DUR API 조회?�는 **?�수 ?�드**�?거치�??�계?? 모델 ?�의�?금기 ?�품??추천?�는 ?�상??100% 차단?�니??
+3.  **명시???�러 ?�들�?*: ?�정 API ?�출???�패?�더?�도 ?�른 경로�??�백(Fallback)?????�는 구조??분기?�력??보유?�니??
 
 ---
 ---
 
-## 📸 작동 데모
+## ?�� ?�동 ?�모
 
-| 🌐 웹서비스 메인 화면 | 🗺️ 반경 내 약국 검색 |
+| ?�� ?�서비스 메인 ?�면 | ?���?반경 ???�국 검??|
 |:---:|:---:|
-| <img src="main.png" alt="웹 메인 화면" width="400"/> | <img src="map.png" alt="구글맵 내 주변 약국" width="400"/> |
-| **자연어 증상 입력 시 추천 약품 안내** | **내 위치 기반 반경 내 약국 시각화** |
+| <img src="main.png" alt="??메인 ?�면" width="400"/> | <img src="map.png" alt="구�?�???주�? ?�국" width="400"/> |
+| **?�연??증상 ?�력 ??추천 ?�품 ?�내** | **???�치 기반 반경 ???�국 ?�각??* |
 
 ---
 
-## 🛠 트러블슈팅 및 극복 사례
+## ?�� ?�러블슈??�?극복 ?��?
 
-프로젝트를 진행하며 겪었던 주요 기술적 챌린지와 해결 과정입니다.
+?�로?�트�?진행?�며 겪었??주요 기술??챌린지?� ?�결 과정?�니??
 
-### 1. LangGraph Pipeline 환각(Hallucination) 제어
-- **문제**: LLM 모델이 증상 기반 약품 추천 시 가상의 약품이나, 유저의 기저질환에 치명적인 약품을 추천하는 현상 발생.
-- **해결**: Router 노드에서 `symptom_recommendation`을 감지할 경우, "DUR/OpenFDA 조회 노드"를 **강제 (Mandatory) 통과**하도록 State Machine 엣지를 설계했습니다. 수집된 제약 API 반환값(Context) 외의 약물은 프롬프트 단에서 철저히 차단하는 `Chain of Safety` 아키텍처를 구현해 신뢰도를 높였습니다.
+### 1. LangGraph Pipeline ?�각(Hallucination) ?�어
+- **문제**: LLM 모델??증상 기반 ?�품 추천 ??가?�의 ?�품?�나, ?��???기�?질환??치명?�인 ?�품??추천?�는 ?�상 발생.
+- **?�결**: Router ?�드?�서 `symptom_recommendation`??감�???경우, "DUR/OpenFDA 조회 ?�드"�?**강제 (Mandatory) ?�과**?�도�?State Machine ?��?�??�계?�습?�다. ?�집???�약 API 반환�?Context) ?�의 ?�물?� ?�롬?�트 ?�에??철�???차단?�는 `Chain of Safety` ?�키?�처�?구현???�뢰?��? ?��??�니??
 
-### 2. 답변 생성 지연 문제
-- **문제**: 추천 성분이 여러 개일 때 심평원 병용 금기 API를 다중 호출하며 전체 응답 파이프라인 지연이 발생.
-- **해결**: `drug_service.py` 내 API 호출 구조를 **병렬 비동기 호출(Async gather)** 기반으로 전면 리팩토링했습니다. 동시에 처리 가능한 다중 성분 쿼리들은 대기 시간 없이 한 번에 요청 및 분석되어, 전체 응답 파이프라인 지연 시간을 기존 대비 획기적으로 낮추었습니다.
+### 2. ?��? ?�성 지??문제
+- **문제**: 추천 ?�분???�러 개일 ???�평??병용 금기 API�??�중 ?�출?�며 ?�체 ?�답 ?�이?�라??지?�이 발생.
+- **?�결**: `drug_service.py` ??API ?�출 구조�?**병렬 비동�??�출(Async gather)** 기반?�로 ?�면 리팩?�링?�습?�다. ?�시??처리 가?�한 ?�중 ?�분 쿼리?��? ?��??�간 ?�이 ??번에 ?�청 �?분석?�어, ?�체 ?�답 ?�이?�라??지???�간??기존 ?��??�기?�으�???��?�습?�다.
 
-### 3. Django 비동기(ASGI) 환경 전환을 통한 스레드 블로킹 해결
-- **문제**: LangGraph 체인과 다단계 API(OpenFDA, Supabase, Google Maps)를 호출하는 구조에서, 기존 Django의 동기식 WSGI(`manage.py runserver`) 환경을 사용할 경우 스레드 블로킹(Thread Blocking)으로 인해 런타임 효율이 급감하는 현상이 발생했습니다.
-- **해결**: 어플리케이션 구동 방식을 `Uvicorn` 기반의 ASGI 환경(`run_uvicorn.py`)으로 전환하였습니다. 이를 통해 뷰(`views.py`)부터 노드(`nodes_v2.py`)까지 모든 파이프라인을 `async/await` 네이티브 비동기로 통일시켜 수많은 I/O 바운드 작업의 병목 현상을 성공적으로 해소했습니다.
+### 3. Django 비동�?ASGI) ?�경 ?�환???�한 ?�레??블로???�결
+- **문제**: LangGraph 체인�??�단�?API(OpenFDA, Supabase, Google Maps)�??�출?�는 구조?�서, 기존 Django???�기??WSGI(`manage.py runserver`) ?�경???�용??경우 ?�레??블로??Thread Blocking)?�로 ?�해 ?��????�율??급감?�는 ?�상??발생?�습?�다.
+- **?�결**: ?�플리�??�션 구동 방식??`Uvicorn` 기반??ASGI ?�경(`run_uvicorn.py`)?�로 ?�환?��??�니?? ?��? ?�해 �?`views.py`)부???�드(`nodes_v2.py`)까�? 모든 ?�이?�라?�을 `async/await` ?�이?�브 비동기로 ?�일?�켜 ?�많?� I/O 바운???�업??병목 ?�상???�공?�으�??�소?�습?�다.
 
-### 4. 다국어(한/영) 의료 데이터 불일치로 인한 검색 정확도 개선
-- **문제**: 사용자는 한국어로 증상 구어체(예: "머리가 넘 아파요")를 입력하지만, 기반 데이터인 FDA 가이드라인과 텍스트 데이터는 영문(Medical Terms)이어서 DB 검색 적중률이 현저히 떨어지는 문제가 있었습니다.
-- **해결**: 자체적인 한영 매핑 리스트(`_SYMPTOM_KR_TO_EN`)와 언어 판별 및 AI 번역 헬퍼(`_translate_profile_fields_to_english`)를 파이프라인 최상단에 도입했습니다. 이를 통해 사용자의 한국어 기저질환 및 프로필을 표준 영문 의학 용어로 동적으로 전처리하여 검색 적중률과 모델 인식률을 극대화했습니다.
-
----
-
-## 🚀 향후 로드맵 (Roadmap)
-
-V1.0 배포 이후, 다음과 같은 추가 개선 사항을 목표로 하고 있습니다.
-
-- [ ] **다국어 지원 엔진 탑재**: 외국인 관광객이나 체류자를 위해 영어/중국어 등 외국어 증상 입력 처리 및 라벨 통역.
-- [ ] **약국 재고 실시간 연동**: 공공 보건 데이터 연계로, "해당 약을 현재 보유하고 있는 약국"만을 필터링하는 실시간 재고 기능.
-- [ ] **개인화 메디컬 리포트 대시보드**: 누적된 질문 데이터를 바탕으로, 내 건강 상태 변화나 월별 주의 약품을 모니터링할 수 있는 UI 컴포넌트 추가.
+### 4. ?�국?????? ?�료 ?�이??불일치로 ?�한 검???�확??개선
+- **문제**: ?�용?�는 ?�국?�로 증상 구어�??? "머리가 ???�파??)�??�력?��?�? 기반 ?�이?�인 FDA 가?�드?�인�??�스???�이?�는 ?�문(Medical Terms)?�어??DB 검???�중률이 ?��????�어지??문제가 ?�었?�니??
+- **?�결**: ?�체?�인 ?�영 매핑 리스??`_SYMPTOM_KR_TO_EN`)?� ?�어 ?�별 �?AI 번역 ?�퍼(`_translate_profile_fields_to_english`)�??�이?�라??최상?�에 ?�입?�습?�다. ?��? ?�해 ?�용?�의 ?�국??기�?질환 �??�로?�을 ?��? ?�문 ?�학 ?�어�??�적?�로 ?�처리하??검???�중률과 모델 ?�식률을 극�??�했?�니??
 
 ---
 
-## 🚀 실행 방법
+## ?? ?�후 로드�?(Roadmap)
 
-### 1️⃣ 필수 패키지 설치
+V1.0 배포 ?�후, ?�음�?같�? 추�? 개선 ?�항??목표�??�고 ?�습?�다.
+
+- [ ] **?�국??지???�진 ?�재**: ?�국??관광객?�나 체류?��? ?�해 ?�어/중국?????�국??증상 ?�력 처리 �??�벨 ?�역.
+- [ ] **?�국 ?�고 ?�시�??�동**: 공공 보건 ?�이???�계�? "?�당 ?�을 ?�재 보유?�고 ?�는 ?�국"만을 ?�터링하???�시�??�고 기능.
+- [ ] **개인??메디�?리포???�?�보??*: ?�적??질문 ?�이?��? 바탕?�로, ??건강 ?�태 변?�나 ?�별 주의 ?�품??모니?�링?????�는 UI 컴포?�트 추�?.
+
+---
+
+## ?? ?�행 방법
+
+### 1️⃣ ?�수 ?�키지 ?�치
 
 ```bash
-# 가상환경 활성화 (Python 3.12 권장)
+# 가?�환�??�성??(Python 3.12 권장)
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2️⃣ 환경 변수 설정
+### 2️⃣ ?�경 변???�정
 
-프로젝트 루트 디렉토리에 `.env` 파일을 생성하고, 설정값 및 서비스 키를 입력합니다.
+?�로?�트 루트 ?�렉?�리??`.env` ?�일???�성?�고, ?�정�?�??�비???��? ?�력?�니??
 
 ```env
 # OpenAI
@@ -289,50 +289,50 @@ SUPABASE_URL=...
 SUPABASE_KEY=...
 ```
 
-### 3️⃣ 애플리케이션 (Django) 마이그레이션 및 서버 구동
+### 3️⃣ ?�플리�??�션 (Django) 마이그레?�션 �??�버 구동
 
 ```bash
-cd skn22_4th_prj
+cd otc_info
 python manage.py makemigrations
 python manage.py migrate
 
-# 개발 서버 실행
+# 개발 ?�버 ?�행
 python run_uvicorn.py
 ```
 
 ---
 
-## 💬 질문 예시
+## ?�� 질문 ?�시
 
-| 카테고리 | 질문 예시 | 비고 |
+| 카테고리 | 질문 ?�시 | 비고 |
 |:---:|:---|:---|
-| **🏷️ 제품명/성분** | "타이레놀과 이부프로펜 차이를 알려주세요" | `product_request` 상태망 이용 |
-| **🩹 증상 검색** | "(임산부 로그인 유저 기준) 머리가 아프고 배탈이 났는데 어떤 약 먹어야 해?" | `symptom_recommendation` 상태망 & DUR/임부금기 작동 |
-| **❓ 일반 의료** | "상처가 났을 때 과산화수소가 좋은가요?" | 일반 상식으로 응답 (`general_medical`) |
+| **?���??�품�??�분** | "?�?�레?��??��??�로??차이�??�려주세?? | `product_request` ?�태�??�용 |
+| **?�� 증상 검??* | "(?�산부 로그???��? 기�?) 머리가 ?�프�?배탈???�는???�떤 ??먹어????" | `symptom_recommendation` ?�태�?& DUR/?��?금기 ?�동 |
+| **???�반 ?�료** | "?�처가 ?�을 ??과산?�수?��? 좋�?가??" | ?�반 ?�식?�로 ?�답 (`general_medical`) |
 
 > [!TIP]
-> **회원가입 후 프로필 작성 기능**을 반드시 활용해 보세요. 평소 앓고 있는 알레르기 항목이나 복용 중인 약품 리스트를 작성한 뒤 질문하면, AI가 당신에게 절대로 먹어선 안 되는 금기 리스트를 **조회하여 추천에서 자동 제외**해 줍니다!
+> **?�원가?????�로???�성 기능**??반드???�용??보세?? ?�소 ?�고 ?�는 ?�레르기 ??��?�나 복용 중인 ?�품 리스?��? ?�성????질문?�면, AI가 ?�신?�게 ?��?�?먹어?????�는 금기 리스?��? **조회?�여 추천?�서 ?�동 ?�외**??줍니??
 
 ---
 
-## ⚙️ 주요 설정
+## ?�️ 주요 ?�정
 
-- **`chat/views.py` 내 Pagination**: 답변이 완료될 때 표시할 약국의 개수와 추천 후보 약품의 리미트를 조정할 수 있습니다(기본 약국 정보 **3km 이내 반경 참조**).
-- **LLM 파라미터 (`services/ai_service_v2.py`)**: `temperature=0` 설계로 증상과 DUR 정보 기반의 사실 지향적 응답을 우선순위로 확보했습니다.
+- **`chat/views.py` ??Pagination**: ?��????�료?????�시???�국??개수?� 추천 ?�보 ?�품??리�??��? 조정?????�습?�다(기본 ?�국 ?�보 **3km ?�내 반경 참조**).
+- **LLM ?�라미터 (`services/ai_service_v2.py`)**: `temperature=0` ?�계�?증상�?DUR ?�보 기반???�실 지?�적 ?�답???�선?�위�??�보?�습?�다.
 
 ---
 
-## 👥 팀원 소개
+## ?�� ?�???�개
 
-| 이름 | GitHub |
+| ?�름 | GitHub |
 |:---:|:---:|
-| 김희준 | [@heejoon-91](https://github.com/heejoon-91) |
-| 황하령 | [@harry1749](https://github.com/harry1749) |
-| 이준서 | [@Leejunseo84](https://github.com/Leejunseo84) |
-| 엄형은 | [@DJAeun](https://github.com/DJAeun) |
+| 김?��? | [@heejoon-91](https://github.com/heejoon-91) |
+| ?�하??| [@harry1749](https://github.com/harry1749) |
+| ?��???| [@Leejunseo84](https://github.com/Leejunseo84) |
+| ?�형?� | [@DJAeun](https://github.com/DJAeun) |
 
 **SKN22-4th-1Team**
-"데이터, AI, 그리고 안전의 접점을 연결하며, 환자에게 믿을 수 있는 약품 정보를 실시간으로 전달하는 스마트 생태계를 추구합니다"
+"?�이?? AI, 그리�??�전???�점???�결?�며, ?�자?�게 믿을 ???�는 ?�품 ?�보�??�시간으�??�달?�는 ?�마???�태계�? 추구?�니??
 
 ---
 

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ drug_name }} 점검 결과</title>
+    <style>
+        body { margin:0; background:#0b1020; color:#e8edf8; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .wrap { max-width:1100px; margin:0 auto; padding:30px 20px 48px; }
+        .top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+        .link, .btn, .chip { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:inherit; text-decoration:none; padding:10px 14px; border-radius:12px; }
+        .btn.primary { background:linear-gradient(135deg,#38bdf8,#8b5cf6); border:none; cursor:pointer; }
+        .hero, .card { background:#121a31; border:1px solid rgba(255,255,255,.08); border-radius:24px; padding:24px; margin-bottom:18px; }
+        .hero h1 { margin:0 0 8px; }
+        .muted, p, li { color:#aab7d1; line-height:1.7; }
+        .badge { display:inline-flex; padding:8px 12px; border-radius:999px; font-size:13px; margin-right:8px; }
+        .badge.blocked { background:rgba(248,113,113,.12); color:#fca5a5; }
+        .badge.caution { background:rgba(245,158,11,.12); color:#fcd34d; }
+        .badge.clear { background:rgba(34,197,94,.12); color:#86efac; }
+        .grid { display:grid; grid-template-columns: 1.2fr .8fr; gap:18px; }
+        .assessment-list { display:grid; gap:14px; }
+        .assessment { border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:18px; background:#17213c; }
+        .assessment h3 { margin:0 0 8px; }
+        .status-line { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+        .pill { display:inline-flex; padding:6px 10px; border-radius:999px; font-size:12px; background:rgba(255,255,255,.06); }
+        .section-title { margin:0 0 12px; }
+        .profile-box { display:grid; gap:10px; }
+        .profile-item { padding:12px 14px; border-radius:14px; background:#17213c; }
+        .summary-list { padding-left:18px; }
+        .form-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+        input[type=text] { flex:1; min-width:240px; padding:15px 16px; border-radius:14px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; }
+        .pre { white-space:pre-line; }
+        @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="top">
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a class="link" href="/">← 메인으로</a>
+                {% if symptom_context %}
+                <a class="link" href="/smart-search/?q={{ symptom_context|urlencode }}">증상 단계로 돌아가기</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <section class="hero">
+            <div class="status-line">
+                <span class="badge {{ overall_status.key }}">{{ overall_status.label }}</span>
+                {% if matched_query and matched_query != search_query %}
+                <span class="pill">매칭어: {{ matched_query }}</span>
+                {% endif %}
+            </div>
+            <h1>{{ drug_name }}</h1>
+            <p class="muted">검색어: {{ search_query }}</p>
+            <p class="pre">{{ answer }}</p>
+            {% if ingredients %}
+            <p><strong>주성분</strong>: {{ ingredients }}</p>
+            {% endif %}
+            <p>{{ overall_status.description }}</p>
+        </section>
+
+        <div class="grid">
+            <section>
+                <div class="card">
+                    <h2 class="section-title">개인 건강정보 기준 성분 점검</h2>
+                    <div class="assessment-list">
+                        {% for item in ingredient_assessments %}
+                        <article class="assessment">
+                            <div class="status-line">
+                                <h3>{{ item.name }}</h3>
+                                <span class="badge {{ item.status_key }}">{{ item.status_label }}</span>
+                                {% for w in item.warning_types %}
+                                <span class="pill">{{ w }}</span>
+                                {% endfor %}
+                            </div>
+                            <p>{{ item.reason }}</p>
+                            {% if item.matched_profile_fields %}
+                            <p class="muted">연결된 개인 정보: {{ item.matched_profile_fields|join:", " }}</p>
+                            {% endif %}
+                            {% if item.kr_durs %}
+                            <ul class="summary-list">
+                                {% for dur in item.kr_durs %}
+                                <li>{{ dur.type }}{% if dur.warning %} - {{ dur.warning }}{% endif %}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
+                        </article>
+                        {% empty %}
+                        <article class="assessment">
+                            <p>점검 가능한 성분 정보를 찾지 못했습니다. 영문 제품명이나 영문 주성분명으로 다시 입력해 주세요.</p>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">FDA 라벨 확인</h2>
+                    {% if symptom_context and symptom_fit_note %}
+                    <p><span class="pill">증상 참고: {{ symptom_context }}</span></p>
+                    <p><strong>{{ symptom_fit_note.label }}</strong> — {{ symptom_fit_note.description }}</p>
+                    {% endif %}
+                    <p><strong>Uses / Indications</strong></p>
+                    <p class="pre">{{ us_guideline.indications|default:"정보 없음" }}</p>
+                    <p><strong>Warnings</strong></p>
+                    <p class="pre">{{ us_guideline.warnings|default:"정보 없음" }}</p>
+                    <p><strong>Dosage</strong></p>
+                    <p class="pre">{{ us_guideline.dosage|default:"정보 없음" }}</p>
+                </div>
+            </section>
+
+            <aside>
+                <div class="card">
+                    <h2 class="section-title">회원 건강정보 반영</h2>
+                    <div class="profile-box">
+                        <div class="profile-item"><strong>복용 중인 약</strong><br>{{ profile_snapshot.current_medications }}</div>
+                        <div class="profile-item"><strong>알레르기</strong><br>{{ profile_snapshot.allergies }}</div>
+                        <div class="profile-item"><strong>기저질환</strong><br>{{ profile_snapshot.chronic_diseases }}</div>
+                        <div class="profile-item"><strong>임신/수유</strong><br>{{ profile_snapshot.pregnancy }}</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">DUR 요약</h2>
+                    {% if dur_summary.count > 0 %}
+                    <p>{{ dur_summary.headline }}</p>
+                    {% if dur_summary.type_summary %}
+                    <p class="muted">유형 요약: {{ dur_summary.type_summary }}</p>
+                    {% endif %}
+                    <ul class="summary-list">
+                        {% for line in dur_summary.lines %}
+                        <li>{{ line }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p>DUR 주의 항목이 표시되지 않았습니다. 그래도 라벨의 연령·용량·투여기간은 별도로 확인해 주세요.</p>
+                    {% endif %}
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">다른 제품/성분 다시 점검</h2>
+                    <form action="/smart-search/" method="get">
+                        {% if symptom_context %}
+                        <input type="hidden" name="symptom_context" value="{{ symptom_context }}">
+                        {% endif %}
+                        <div class="form-row">
+                            <input type="text" name="q" placeholder="다른 제품명 또는 주성분명" required>
+                            <button class="btn primary" type="submit">다시 점검</button>
+                        </div>
+                    </form>
+                    <p class="muted">이 페이지는 추천이 아니라 사용자가 직접 고른 제품·성분 점검 결과입니다.</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+</body>
+</html>

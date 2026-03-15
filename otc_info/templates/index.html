@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDSI | 해외 OTC 안전성 점검</title>
+    <style>
+        :root {
+            --bg: #0b1020;
+            --panel: #121a31;
+            --panel-2: #192440;
+            --text: #e8edf8;
+            --muted: #9fb0cf;
+            --line: rgba(255,255,255,0.08);
+            --accent: #7dd3fc;
+            --accent-2: #a78bfa;
+            --good: #86efac;
+            --warn: #fcd34d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: radial-gradient(circle at top, #16213e 0%, var(--bg) 55%);
+            color: var(--text);
+        }
+        a { color: inherit; text-decoration: none; }
+        .container { max-width: 1120px; margin: 0 auto; padding: 28px 20px 56px; }
+        .topbar {
+            display: flex; justify-content: space-between; align-items: center; gap: 16px;
+            margin-bottom: 28px;
+        }
+        .brand { display: flex; flex-direction: column; gap: 2px; }
+        .brand small { color: var(--muted); }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn, .chip {
+            border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--text);
+            padding: 10px 14px; border-radius: 12px; cursor: pointer; font: inherit;
+        }
+        .btn.primary { background: linear-gradient(135deg, #38bdf8, #8b5cf6); border: none; }
+        .hero, .card, .info-card {
+            border: 1px solid var(--line); border-radius: 24px; background: rgba(18,26,49,0.88);
+            backdrop-filter: blur(12px);
+        }
+        .hero { padding: 32px; margin-bottom: 22px; }
+        .eyebrow { display: inline-flex; padding: 8px 12px; border-radius: 999px; background: rgba(125,211,252,0.12); color: var(--accent); font-size: 13px; }
+        h1 { font-size: clamp(2rem, 4vw, 3.4rem); line-height: 1.08; margin: 14px 0 14px; }
+        .hero p { color: var(--muted); max-width: 760px; line-height: 1.6; }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 24px; }
+        .card { padding: 24px; }
+        .card h2 { margin: 0 0 10px; font-size: 1.35rem; }
+        .card p, .info-card p, .step li { color: var(--muted); line-height: 1.6; }
+        .field { display: flex; gap: 10px; margin-top: 16px; }
+        input[type="text"] {
+            width: 100%; padding: 15px 16px; border-radius: 14px; border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04); color: var(--text); font: inherit;
+        }
+        .quick-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+        .chips-note { margin-top: 10px; font-size: 13px; color: var(--muted); }
+        .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 22px; }
+        .info-card { padding: 20px; }
+        .info-card strong { display: block; margin-bottom: 8px; }
+        .step-index {
+            width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+            border-radius: 50%; background: rgba(167,139,250,0.14); color: var(--accent-2); margin-bottom: 10px;
+            font-weight: 700;
+        }
+        .footer-note { margin-top: 22px; padding: 18px 20px; border-radius: 18px; background: rgba(255,255,255,0.04); color: var(--muted); line-height: 1.6; }
+        .highlight { color: var(--good); }
+        @media (max-width: 900px) {
+            .grid, .steps { grid-template-columns: 1fr; }
+            .field { flex-direction: column; }
+            .topbar { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="topbar">
+            <a class="brand" href="/">
+                <strong>GDSI</strong>
+                <small>Global Drug Safety Intelligence</small>
+            </a>
+            <div class="actions">
+                {% if user %}
+                    <span class="btn">{{ user.display_name }} 님</span>
+                    <a class="btn" href="/user/profile">내 정보</a>
+                    <a class="btn" href="/auth/logout/">로그아웃</a>
+                {% else %}
+                    <a class="btn" href="/auth/login/">로그인</a>
+                    <a class="btn primary" href="/auth/register/">회원가입</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <section class="hero">
+            <span class="eyebrow">추천보다 점검 중심</span>
+            <h1>해외 OTC는 <span class="highlight">직접 고른 제품</span>을 기준으로<br>금기·상호작용·주의사항을 확인합니다.</h1>
+            <p>
+                이 서비스는 증상만으로 약을 추천하지 않습니다. 먼저 증상을 정리하거나,
+                이미 고려 중인 제품명·주성분명을 입력하면 회원 건강정보를 반영해 위험 신호를 점검합니다.
+            </p>
+
+            <div class="steps">
+                <div class="info-card step">
+                    <div class="step-index">1</div>
+                    <strong>증상 정리</strong>
+                    <p>증상 입력 시 상담 메모와 다음 입력 단계를 제공합니다. 이 단계에서는 특정 약을 추천하지 않습니다.</p>
+                </div>
+                <div class="info-card step">
+                    <div class="step-index">2</div>
+                    <strong>제품/성분 직접 입력</strong>
+                    <p>사용자가 직접 고른 제품명 또는 주성분명을 기준으로만 점검합니다.</p>
+                </div>
+                <div class="info-card step">
+                    <div class="step-index">3</div>
+                    <strong>안전성 확인</strong>
+                    <p>복용 중인 약, 알레르기, 기저질환, 임신/수유 여부를 기준으로 금기·상호작용·주의사항을 보여줍니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="grid">
+            <article class="card">
+                <h2>증상부터 정리하기</h2>
+                <p>예: “두통이 있고 콧물이 있어요”, “기침이 계속 나요”, “배가 아프고 설사를 해요”</p>
+                <form action="/smart-search/" method="get">
+                    <div class="field">
+                        <input type="text" name="q" id="symptomInput" placeholder="증상을 입력하세요" required>
+                        <button class="btn primary" type="submit">증상 정리 시작</button>
+                    </div>
+                </form>
+                <div class="quick-row">
+                    <button class="chip" data-target="symptomInput" data-value="두통이 있어요" type="button">두통</button>
+                    <button class="chip" data-target="symptomInput" data-value="기침이 계속 나요" type="button">기침</button>
+                    <button class="chip" data-target="symptomInput" data-value="알레르기처럼 콧물과 재채기가 나요" type="button">알레르기</button>
+                    <button class="chip" data-target="symptomInput" data-value="소화가 안 되고 속이 불편해요" type="button">소화불량</button>
+                </div>
+                <div class="chips-note">증상 페이지에서 바로 제품명/성분명 추가 입력 단계로 이어집니다.</div>
+            </article>
+
+            <article class="card">
+                <h2>제품/성분 바로 점검하기</h2>
+                <p>예: Tylenol, acetaminophen, Advil, ibuprofen, Benadryl</p>
+                <form action="/smart-search/" method="get">
+                    <div class="field">
+                        <input type="text" name="q" id="productInput" placeholder="제품명 또는 주성분명을 입력하세요" required>
+                        <button class="btn primary" type="submit">안전성 점검</button>
+                    </div>
+                </form>
+                <div class="quick-row">
+                    <button class="chip" data-target="productInput" data-value="Tylenol" type="button">Tylenol</button>
+                    <button class="chip" data-target="productInput" data-value="acetaminophen" type="button">acetaminophen</button>
+                    <button class="chip" data-target="productInput" data-value="Advil" type="button">Advil</button>
+                    <button class="chip" data-target="productInput" data-value="ibuprofen" type="button">ibuprofen</button>
+                </div>
+                <div class="chips-note">가능하면 미국 라벨 표기 그대로의 제품명이나 영문 주성분명을 입력해 주세요.</div>
+            </article>
+        </section>
+
+        <div class="footer-note">
+            본 서비스는 공개 라벨 정보와 DUR 기준을 바탕으로 점검 정보를 제공합니다.
+            의료적 진단이나 처방을 대신하지 않으며, 최종 복용 결정은 제품 라벨과 약사·의사 상담을 함께 확인해 주세요.
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('.chip').forEach((button) => {
+            button.addEventListener('click', () => {
+                const target = document.getElementById(button.dataset.target);
+                if (target) {
+                    target.value = button.dataset.value || '';
+                    target.focus();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>일반 안내</title>
+    <style>
+        body { margin:0; background:#0b1020; color:#e8edf8; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .wrap { max-width:960px; margin:0 auto; padding:28px 20px 48px; }
+        .link, .card { border:1px solid rgba(255,255,255,.08); background:#121a31; border-radius:24px; }
+        .link { display:inline-flex; padding:10px 14px; color:inherit; text-decoration:none; margin-bottom:18px; }
+        .card { padding:24px; }
+        .badge { display:inline-flex; padding:8px 12px; border-radius:999px; background:rgba(125,211,252,.12); color:#7dd3fc; font-size:13px; }
+        h1 { margin:14px 0 8px; }
+        p, li { color:#aab7d1; line-height:1.7; }
+        .answer { white-space:pre-line; padding:16px 18px; border-radius:16px; background:#17213c; margin-top:14px; }
+        .note { margin-top:16px; padding:16px 18px; border-radius:16px; background:rgba(245,158,11,.08); border-left:4px solid #f59e0b; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <a class="link" href="/">← 메인으로</a>
+        <section class="card">
+            <span class="badge">일반 안내</span>
+            <h1>질문 요약</h1>
+            <p><strong>입력:</strong> {{ query }}</p>
+            {% if symptom_context %}
+            <p><strong>참고 증상:</strong> {{ symptom_context }}</p>
+            {% endif %}
+            <div class="answer">{{ answer|default:"안내 내용을 생성하지 못했습니다." }}</div>
+            <div class="note">
+                이 화면은 제품 추천이 아니라 일반 정보 안내입니다. 실제 복용 판단은 제품 라벨의 Drug Facts와 약사·의사 상담을 함께 확인해 주세요.
+            </div>
+        </section>
+    </div>
+</body>
+</html>
