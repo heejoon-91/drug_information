@@ -3,16 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ drug_name }} 점검 결과</title>
+    <title>{{ drug_name }} 확인 결과</title>
     <style>
         body { margin:0; background:#0b1020; color:#e8edf8; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-        .wrap { max-width:1100px; margin:0 auto; padding:30px 20px 48px; }
+        .wrap { max-width:1120px; margin:0 auto; padding:30px 20px 48px; }
         .top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
         .link, .btn, .chip { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:inherit; text-decoration:none; padding:10px 14px; border-radius:12px; }
         .btn.primary { background:linear-gradient(135deg,#38bdf8,#8b5cf6); border:none; cursor:pointer; }
         .hero, .card { background:#121a31; border:1px solid rgba(255,255,255,.08); border-radius:24px; padding:24px; margin-bottom:18px; }
         .hero h1 { margin:0 0 8px; }
-        .muted, p, li { color:#aab7d1; line-height:1.7; }
+        p, li { color:#aab7d1; line-height:1.7; }
+        .muted { color:#8ea1c4; }
         .badge { display:inline-flex; padding:8px 12px; border-radius:999px; font-size:13px; margin-right:8px; }
         .badge.blocked { background:rgba(248,113,113,.12); color:#fca5a5; }
         .badge.caution { background:rgba(245,158,11,.12); color:#fcd34d; }
@@ -28,9 +29,18 @@
         .profile-item { padding:12px 14px; border-radius:14px; background:#17213c; }
         .summary-list { padding-left:18px; }
         .form-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-        input[type=text] { flex:1; min-width:240px; padding:15px 16px; border-radius:14px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; }
-        .pre { white-space:pre-line; }
-        @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
+        input[type=text], input[type=file] { flex:1; min-width:240px; padding:15px 16px; border-radius:14px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; }
+        textarea { width:100%; min-height:180px; border-radius:16px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; padding:14px; font:inherit; }
+        .pre, pre { white-space:pre-line; }
+        .use-list li { margin-bottom:6px; }
+        .caution-box { margin-top:12px; padding:14px 16px; border-radius:16px; background:rgba(245,158,11,.08); border-left:4px solid #f59e0b; }
+        .image-review-result { margin-top:16px; padding:18px; border-radius:18px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.03); }
+        .image-result-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:16px; }
+        .result-card-block { padding:16px; border-radius:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); }
+        .label-pill { display:inline-flex; padding:6px 10px; border-radius:999px; background:rgba(125,211,252,.12); color:#7dd3fc; font-size:12px; margin-bottom:12px; }
+        .prelike { white-space:pre-line; color:#e8edf8; line-height:1.6; }
+        .button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+        @media (max-width: 920px) { .grid, .image-result-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -53,17 +63,32 @@
             </div>
             <h1>{{ drug_name }}</h1>
             <p class="muted">검색어: {{ search_query }}</p>
-            <p class="pre">{{ answer }}</p>
             {% if ingredients %}
             <p><strong>주성분</strong>: {{ ingredients }}</p>
             {% endif %}
+            <p class="pre">{{ answer }}</p>
             <p>{{ overall_status.description }}</p>
         </section>
 
         <div class="grid">
             <section>
                 <div class="card">
-                    <h2 class="section-title">개인 건강정보 기준 성분 점검</h2>
+                    <h2 class="section-title">{{ general_use_panel.title|default:"일반 효능 / 용도" }}</h2>
+                    <p>{{ general_use_panel.summary }}</p>
+                    {% if general_use_panel.bullets %}
+                    <ul class="summary-list use-list">
+                        {% for item in general_use_panel.bullets %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="pre">{{ general_use_panel.raw_text }}</p>
+                    {% endif %}
+                    <div class="caution-box">{{ general_use_panel.caution }}</div>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">개인 건강정보 기준 warning / DUR 점검</h2>
                     <div class="assessment-list">
                         {% for item in ingredient_assessments %}
                         <article class="assessment">
@@ -95,7 +120,7 @@
                 </div>
 
                 <div class="card">
-                    <h2 class="section-title">FDA 라벨 확인</h2>
+                    <h2 class="section-title">FDA 라벨 원문 확인</h2>
                     {% if symptom_context and symptom_fit_note %}
                     <p><span class="pill">증상 참고: {{ symptom_context }}</span></p>
                     <p><strong>{{ symptom_fit_note.label }}</strong> — {{ symptom_fit_note.description }}</p>
@@ -104,7 +129,7 @@
                     <p class="pre">{{ us_guideline.indications|default:"정보 없음" }}</p>
                     <p><strong>Warnings</strong></p>
                     <p class="pre">{{ us_guideline.warnings|default:"정보 없음" }}</p>
-                    <p><strong>Dosage</strong></p>
+                    <p><strong>Dosage / Directions</strong></p>
                     <p class="pre">{{ us_guideline.dosage|default:"정보 없음" }}</p>
                 </div>
             </section>
@@ -137,21 +162,130 @@
                     {% endif %}
                 </div>
 
+                {% if consultation_note %}
                 <div class="card">
-                    <h2 class="section-title">다른 제품/성분 다시 점검</h2>
+                    <h2 class="section-title">약사 상담 카드</h2>
+                    <p>제품/성분 확인 결과를 약사에게 보여주기 위한 메모입니다.</p>
+                    <textarea id="consultationMemo" readonly>{{ consultation_note.memo_text }}</textarea>
+                    <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+                        <button class="btn" type="button" id="copyMemoBtn">메모 복사</button>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="card">
+                    <h2 class="section-title">다른 제품 / 성분 다시 확인</h2>
                     <form action="/smart-search/" method="get">
                         {% if symptom_context %}
                         <input type="hidden" name="symptom_context" value="{{ symptom_context }}">
                         {% endif %}
                         <div class="form-row">
-                            <input type="text" name="q" placeholder="다른 제품명 또는 주성분명" required>
-                            <button class="btn primary" type="submit">다시 점검</button>
+                            <input type="text" id="recheckInput" name="q" placeholder="다른 제품명 또는 주성분명" required>
+                            <button class="btn primary" type="submit">다시 확인</button>
                         </div>
                     </form>
-                    <p class="muted">이 페이지는 추천이 아니라 사용자가 직접 고른 제품·성분 점검 결과입니다.</p>
+                    <p class="muted">이 페이지는 일반 효능 안내와 경고 점검만 제공합니다. 복용 가능 여부를 판단하지 않습니다.</p>
+                </div>
+
+                <div class="card">
+                    <h2 class="section-title">라벨 사진 번역</h2>
+                    <p>Warnings나 Drug Facts 사진만 따로 찍어 올려도 됩니다. 보이는 문구를 번역·설명하고, 읽힌 제품명·성분이 있으면 다시 확인 입력으로 연결합니다.</p>
+                    <form class="image-review-form" data-result-id="imageReviewSearch" data-query-input="recheckInput" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        {% if symptom_context %}
+                        <input type="hidden" name="symptom_context" value="{{ symptom_context }}">
+                        {% endif %}
+                        <div class="form-row">
+                            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" capture="environment" required>
+                            <button class="btn primary" type="submit">사진 분석</button>
+                        </div>
+                    </form>
+                    <div id="imageReviewSearch" class="image-review-result" hidden></div>
                 </div>
             </aside>
         </div>
     </div>
+
+    <script>
+        function getCookie(name) {
+            const cookieValue = document.cookie.split('; ').find((row) => row.startsWith(name + '='));
+            return cookieValue ? decodeURIComponent(cookieValue.split('=')[1]) : '';
+        }
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+        function renderImageReviewResult(container, data, queryInputId) {
+            const productName = data.product_name ? `<p><strong>감지된 제품명</strong>: ${escapeHtml(data.product_name)}</p>` : '';
+            const ingredients = (data.active_ingredients || []).length ? `<p><strong>감지된 주성분</strong>: ${data.active_ingredients.map(escapeHtml).join(', ')}</p>` : '';
+            const headings = (data.warning_headings || []).length ? `<p><strong>표시된 경고 항목</strong>: ${data.warning_headings.map(escapeHtml).join(', ')}</p>` : '';
+            const cautions = (data.caution_points || []).length ? `<ul>${data.caution_points.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : '<p>뚜렷한 경고 요약 항목을 추출하지 못했습니다.</p>';
+            const uncertain = (data.uncertain_points || []).length ? `<ul>${data.uncertain_points.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>` : '';
+            const rawText = data.raw_visible_text ? `<details><summary>보이는 영어 문구</summary><pre>${escapeHtml(data.raw_visible_text)}</pre></details>` : '';
+            const searchAction = data.search_url ? `<a class="btn primary" href="${escapeHtml(data.search_url)}">이 항목 점검하기</a>` : '';
+            const fillAction = data.detected_query_term && queryInputId ? `<button class="btn fill-query-btn" type="button">입력창 채우기</button>` : '';
+            container.hidden = false;
+            container.innerHTML = `<div class="image-result-grid"><div class="result-card-block"><span class="label-pill">${escapeHtml(data.label_type || 'unknown')}</span>${productName}${ingredients}${headings}<p><strong>한국어 번역</strong></p><p class="prelike">${escapeHtml(data.korean_translation || '번역 가능한 문구를 충분히 읽지 못했습니다.')}</p><p><strong>쉬운 설명</strong></p><p class="prelike">${escapeHtml(data.plain_explanation || '설명 가능한 내용을 충분히 추출하지 못했습니다.')}</p><div class="button-row">${searchAction}${fillAction}</div></div><div class="result-card-block"><p><strong>확인 포인트</strong></p>${cautions}${uncertain ? `<p><strong>불확실하거나 잘 안 보이는 부분</strong></p>${uncertain}` : ''}${rawText}</div></div>`;
+            const fillButton = container.querySelector('.fill-query-btn');
+            if (fillButton) {
+                fillButton.addEventListener('click', () => {
+                    const target = document.getElementById(queryInputId);
+                    if (target) {
+                        target.value = data.detected_query_term || '';
+                        target.focus();
+                    }
+                });
+            }
+        }
+        const copyBtn = document.getElementById('copyMemoBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                const text = document.getElementById('consultationMemo')?.value || '';
+                try {
+                    await navigator.clipboard.writeText(text);
+                    copyBtn.textContent = '복사됨';
+                    setTimeout(() => { copyBtn.textContent = '메모 복사'; }, 1200);
+                } catch (err) {
+                    copyBtn.textContent = '복사 실패';
+                }
+            });
+        }
+        document.querySelectorAll('.image-review-form').forEach((form) => {
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const result = document.getElementById(form.dataset.resultId);
+                const queryInputId = form.dataset.queryInput || '';
+                if (!result) return;
+                const fileInput = form.querySelector('input[type="file"]');
+                if (!fileInput || !fileInput.files || !fileInput.files.length) {
+                    result.hidden = false;
+                    result.innerHTML = '<p>이미지 파일을 선택해 주세요.</p>';
+                    return;
+                }
+                result.hidden = false;
+                result.innerHTML = '<p>이미지를 읽는 중입니다...</p>';
+                const formData = new FormData(form);
+                try {
+                    const response = await fetch('/api/label-image/', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                        body: formData
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || payload.status !== 'success') {
+                        throw new Error(payload.message || '이미지 분석에 실패했습니다.');
+                    }
+                    renderImageReviewResult(result, payload.data || {}, queryInputId);
+                } catch (error) {
+                    result.hidden = false;
+                    result.innerHTML = `<p>${escapeHtml(error.message || '이미지 분석에 실패했습니다.')}</p>`;
+                }
+            });
+        });
+    </script>
 </body>
 </html>

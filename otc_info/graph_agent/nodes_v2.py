@@ -283,10 +283,18 @@ async def generate_product_answer_node(state: AgentState) -> AgentState:
         else:
             ingredient_bits.append(str(ingredient))
 
+    indications = str(fda_data.get("indications") or "").strip()
+    if indications:
+        indication_summary = indications if len(indications) <= 180 else indications[:177].rstrip() + "..."
+        first_line = f"{brand_name}의 라벨상 일반 효능/용도는 다음 Uses·Indications 문구를 기준으로 확인할 수 있습니다: {indication_summary}"
+    else:
+        first_line = f"{brand_name}의 일반 효능/용도 문구는 충분히 확인되지 않았습니다. 구매 전 Drug Facts의 Uses 항목을 직접 확인해 주세요."
+
     final_answer = (
-        f"{brand_name}의 주성분을 기준으로 금기·상호작용·주의사항 점검을 준비했습니다. "
-        f"점검 대상 성분: {', '.join(ingredient_bits)}. "
-        "최종 복용 판단은 제품 라벨의 Drug Facts와 약사 확인을 함께 보시는 것이 안전합니다."
+        first_line
+        + "\n\n"
+        + f"점검 대상 성분: {', '.join(ingredient_bits)}. "
+        + "이 화면은 복용 가능 여부를 판단하지 않으며, 아래의 DUR·경고·라벨 정보를 함께 확인하도록 돕습니다."
     )
 
     return {
