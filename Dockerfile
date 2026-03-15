@@ -19,4 +19,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["python", "skn22_4th_prj/run_uvicorn.py"]
+CMD ["python", "otc_info/run_uvicorn.py"]

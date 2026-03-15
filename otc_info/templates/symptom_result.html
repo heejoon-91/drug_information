@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>증상 정리 결과</title>
+    <style>
+        body { margin: 0; background: #0b1020; color: #e8edf8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 48px; }
+        .top { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+        a, button { text-decoration:none; color:inherit; }
+        .link, .btn { border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); padding:10px 14px; border-radius:12px; display:inline-flex; }
+        .card { background:#121a31; border:1px solid rgba(255,255,255,.08); border-radius:24px; padding:24px; margin-bottom:18px; }
+        .bubble { padding:16px 18px; border-radius:18px; line-height:1.7; white-space:pre-line; }
+        .bubble.user { background:#1f2d4f; margin-left:auto; max-width:78%; }
+        .bubble.assistant { background:#17213c; border:1px solid rgba(255,255,255,.06); max-width:88%; }
+        h1, h2, h3 { margin:0 0 12px; }
+        p, li { color:#aab7d1; line-height:1.7; }
+        .label { font-size:13px; color:#7dd3fc; margin-bottom:8px; display:block; }
+        .followup-form { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+        input[type=text] { flex:1; min-width:240px; padding:15px 16px; border-radius:14px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; }
+        .btn.primary { background:linear-gradient(135deg,#38bdf8,#8b5cf6); border:none; cursor:pointer; }
+        .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+        .chip { border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.04); border-radius:999px; padding:8px 12px; cursor:pointer; }
+        .alert { border-left:4px solid #f59e0b; background:rgba(245,158,11,.08); padding:14px 16px; border-radius:14px; margin-top:14px; }
+        textarea { width:100%; min-height:150px; border-radius:16px; border:1px solid rgba(255,255,255,.1); background:#0f1730; color:#fff; padding:14px; font:inherit; }
+        .note { color:#8ea1c4; font-size:14px; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="top">
+            <a class="link" href="/">← 메인으로</a>
+            <a class="link" href="/smart-search-products/">제품/성분 직접 입력 페이지</a>
+        </div>
+
+        <section class="card">
+            <span class="label">증상 입력</span>
+            <div class="bubble user">{{ symptom }}</div>
+            <div style="height:12px"></div>
+            <span class="label">점검 안내</span>
+            <div class="bubble assistant">{{ answer }}</div>
+
+            {% if followup.red_flags %}
+            <div class="alert">
+                <strong>진료 우선 검토 신호</strong>
+                <ul>
+                    {% for item in followup.red_flags %}
+                    <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="card">
+            <h2>{{ followup.next_step_title|default:"다음 단계" }}</h2>
+            <p>예정 중인 제품명 또는 주성분명을 직접 입력해 주세요. 이 단계에서 실제 금기·상호작용·주의사항 점검이 진행됩니다.</p>
+            <form action="/smart-search/" method="get">
+                <input type="hidden" name="symptom_context" value="{{ symptom }}">
+                <div class="followup-form">
+                    <input type="text" id="manualProductInput" name="q" placeholder="예: Tylenol, acetaminophen, Advil, ibuprofen" required>
+                    <button class="btn primary" type="submit">이 제품/성분 점검하기</button>
+                </div>
+            </form>
+            <div class="chips">
+                {% if followup.generic_examples %}
+                    {% for item in followup.generic_examples %}
+                    <button class="chip" type="button" data-value="{{ item }}">{{ item }}</button>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <p class="note">증상은 참고용으로만 유지되며, 최종 점검은 사용자가 직접 입력한 제품/성분을 기준으로 수행합니다.</p>
+        </section>
+
+        {% if consultation_note %}
+        <section class="card">
+            <h2>약사 상담용 메모</h2>
+            <p>점검 결과가 애매하거나 주의 항목이 있을 때 그대로 보여주기 쉬운 메모입니다.</p>
+            <textarea id="consultationMemo" readonly>{{ consultation_note.memo_text }}</textarea>
+            <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn" type="button" id="copyMemoBtn">메모 복사</button>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    <script>
+        document.querySelectorAll('.chip').forEach((button) => {
+            button.addEventListener('click', () => {
+                const target = document.getElementById('manualProductInput');
+                if (target) {
+                    target.value = button.dataset.value || '';
+                    target.focus();
+                }
+            });
+        });
+        const copyBtn = document.getElementById('copyMemoBtn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', async () => {
+                const text = document.getElementById('consultationMemo')?.value || '';
+                try {
+                    await navigator.clipboard.writeText(text);
+                    copyBtn.textContent = '복사됨';
+                    setTimeout(() => { copyBtn.textContent = '메모 복사'; }, 1200);
+                } catch (err) {
+                    copyBtn.textContent = '복사 실패';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
