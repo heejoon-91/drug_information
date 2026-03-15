@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from functools import lru_cache
 from typing import Any, Dict, List
+from urllib.parse import quote_plus
 
 from django.shortcuts import render, redirect
 from django.http import HttpResponse, JsonResponse
@@ -311,14 +312,14 @@ def _assess_ingredient_for_profile(dur_item: dict, user_profile: dict) -> Dict[s
         }
 
     if has_profile:
-        reason = "입력한 건강정보 기준의 직접 충돌 항목은 확인되지 않았습니다. 제품 라벨의 용량·연령·투여기간은 별도로 확인하세요."
+        reason = "현재 입력된 건강정보 기준에서 직접 연결된 금기·상호작용 항목은 확인되지 않았습니다. 다만 복용 적합성 판단은 아니므로 제품 라벨의 용량·연령·투여기간을 별도로 확인하세요."
     else:
         reason = "회원 건강정보가 없어서 일반 라벨·DUR 기준만 점검했습니다. 로그인 후 더 구체적으로 확인할 수 있습니다."
 
     return {
         "name": ingredient,
         "status_key": "clear",
-        "status_label": "직접 충돌 근거 없음",
+        "status_label": "현재 입력 기준 직접 경고 없음",
         "can_take": True,
         "reason": reason,
         "warning_types": warning_types,
@@ -357,8 +358,8 @@ def _summarize_assessments(assessments: List[dict]) -> Dict[str, str]:
         }
     return {
         "key": "clear",
-        "label": "직접 충돌 근거 없음",
-        "description": "현재 입력된 건강정보 기준의 직접 충돌 항목은 확인되지 않았습니다. 최종 확인은 제품 라벨과 약사 상담을 함께 보세요.",
+        "label": "현재 입력 기준 직접 경고 없음",
+        "description": "현재 입력된 건강정보 기준에서 직접 연결된 금기·상호작용 항목은 확인되지 않았습니다. 다만 복용 가능 여부를 판단한 것은 아니므로 제품 라벨과 약사 상담을 함께 확인해 주세요.",
     }
 
 
@@ -451,6 +452,91 @@ def _build_profile_snapshot(user_profile: dict) -> Dict[str, str]:
         "chronic_diseases": _to_profile_display(profile.get("chronic_diseases")),
         "pregnancy": "예" if bool(profile.get("is_pregnant")) else "아니오",
     }
+
+
+def _build_general_use_panel(fda_data: dict, fallback_name: str = "") -> Dict[str, Any]:
+    data = fda_data if isinstance(fda_data, dict) else {}
+    product_name = str(data.get("brand_name") or fallback_name or "이 제품").strip()
+    indications = str(data.get("indications") or "").strip()
+    warnings = str(data.get("warnings") or "").strip()
+
+    bullets = []
+    for piece in re.split(r"\n+|•|;|\.\s+", indications):
+        token = str(piece or "").strip(" -•\t")
+        if len(token) < 2 or token in bullets:
+            continue
+        bullets.append(token)
+        if len(bullets) >= 6:
+            break
+
+    if indications:
+        summary = f"{product_name}의 라벨상 일반 효능/용도는 아래 Uses·Indications 문구를 기준으로 확인할 수 있습니다."
+    else:
+        summary = f"{product_name}의 일반 효능/용도 문구를 충분히 찾지 못했습니다. 구매 전 Drug Facts의 Uses 항목을 직접 확인해 주세요."
+
+    caution = "이 정보는 라벨의 일반 효능 안내이며, 현재 증상에 맞는지 또는 복용 가능한지는 별도로 판단하지 않습니다."
+    if warnings and not indications:
+        caution += " 경고 문구는 확인되었지만 효능 문구는 부족할 수 있습니다."
+
+    return {
+        "title": "일반 효능 / 용도",
+        "summary": summary,
+        "raw_text": indications or "정보 없음",
+        "bullets": bullets,
+        "caution": caution,
+    }
+
+
+async def _build_product_consultation_note(query: str, fda_data: dict, user_profile: dict, symptom_context: str = ""):
+    profile = user_profile if isinstance(user_profile, dict) else {}
+    product_name = str((fda_data or {}).get("brand_name") or query or "제품").strip()
+    active_ingredients = str((fda_data or {}).get("active_ingredients") or "").strip()
+    indications = str((fda_data or {}).get("indications") or "").strip()
+
+    meds = _to_profile_display(profile.get("current_medications"))
+    allergies = _to_profile_display(profile.get("allergies"))
+    diseases = _to_profile_display(profile.get("chronic_diseases"))
+    translated = await _translate_profile_fields_to_english(meds, allergies, diseases)
+    meds = translated["meds"]
+    allergies = translated["allergies"]
+    diseases = translated["diseases"]
+    pregnancy = "Yes" if bool(profile.get("is_pregnant")) else "No"
+
+    lines = [
+        "Hello, I am checking an OTC product before purchase.",
+        f"- Product or ingredient: {product_name}",
+    ]
+    if active_ingredients:
+        lines.append(f"- Active ingredient(s): {active_ingredients}")
+    if symptom_context:
+        lines.append(f"- Symptom note (optional): {_to_english_symptom(symptom_context, symptom_context)}")
+    if indications:
+        short_use = indications if len(indications) <= 220 else indications[:217].rstrip() + "..."
+        lines.append(f"- Label uses shown: {short_use}")
+    lines.extend([
+        f"- Current medications: {meds}",
+        f"- Allergies: {allergies}",
+        f"- Chronic conditions: {diseases}",
+        f"- Pregnancy/Breastfeeding: {pregnancy}",
+        "",
+        "Please review the label warnings, interactions, dose, age limits, and whether I should avoid this OTC product.",
+    ])
+
+    return {
+        "product_name": product_name,
+        "active_ingredients": active_ingredients,
+        "memo_text": "\n".join(lines).strip(),
+    }
+
+
+def _build_manual_check_url(query: str, symptom_context: str = "") -> str:
+    token = str(query or "").strip()
+    if not token:
+        return ""
+    url = f"/smart-search/?q={quote_plus(token)}"
+    if symptom_context:
+        url += f"&symptom_context={quote_plus(str(symptom_context).strip())}"
+    return url
 
 
 def home(request):
@@ -558,6 +644,13 @@ async def _run_search_pipeline(request, query: str, symptom_context: str = ""):
         dur_summary = _build_structured_dur_summary(structured_dur)
         symptom_fit_note = _build_symptom_fit_note(symptom_context, fda)
         profile_snapshot = _build_profile_snapshot(user_profile)
+        general_use_panel = _build_general_use_panel(fda, fallback_name=query)
+        consultation_note = await _build_product_consultation_note(
+            query=query,
+            fda_data=fda,
+            user_profile=user_profile,
+            symptom_context=symptom_context,
+        )
 
         return {
             "status": "ok",
@@ -578,6 +671,8 @@ async def _run_search_pipeline(request, query: str, symptom_context: str = ""):
                 "profile_snapshot": profile_snapshot,
                 "symptom_context": symptom_context,
                 "symptom_fit_note": symptom_fit_note,
+                "general_use_panel": general_use_panel,
+                "consultation_note": consultation_note,
                 "answer": final_answer,
             },
             "data": {
@@ -589,6 +684,8 @@ async def _run_search_pipeline(request, query: str, symptom_context: str = ""):
                 "profile_snapshot": profile_snapshot,
                 "symptom_context": symptom_context,
                 "symptom_fit_note": symptom_fit_note,
+                "general_use_panel": general_use_panel,
+                "consultation_note": consultation_note,
             },
         }
 
@@ -736,3 +833,32 @@ async def symptom_products_api(request):
             "profile_snapshot": _build_profile_snapshot(user_profile),
         }
     )
+
+
+async def label_image_api(request):
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "POST only"}, status=405)
+
+    uploaded_file = request.FILES.get("image")
+    if not uploaded_file:
+        return JsonResponse({"status": "error", "message": "image file is required"}, status=400)
+
+    symptom_context = str(request.POST.get("symptom_context") or "").strip()
+
+    try:
+        from services.image_label_service import ImageLabelService
+
+        data = await ImageLabelService.analyze_label_image(uploaded_file)
+    except ValueError as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=400)
+    except RuntimeError as exc:
+        return JsonResponse({"status": "error", "message": str(exc)}, status=503)
+    except Exception as exc:
+        logger.exception("label image analysis failed: %s", exc)
+        return JsonResponse({"status": "error", "message": "이미지 분석 중 오류가 발생했습니다."}, status=500)
+
+    detected_query_term = str(data.get("detected_query_term") or "").strip()
+    if detected_query_term:
+        data["search_url"] = _build_manual_check_url(detected_query_term, symptom_context=symptom_context)
+    data["symptom_context"] = symptom_context
+    return JsonResponse({"status": "success", "data": data})

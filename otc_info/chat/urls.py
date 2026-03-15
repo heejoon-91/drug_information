@@ -13,4 +13,5 @@ urlpatterns = [
     path("api/manual-check/", views.symptom_products_api, name="manual_check_api"),
     path("api/pharmacies/", views.pharmacy_api, name="pharmacy_api"),
     path("api/symptom-products/", views.symptom_products_api, name="symptom_products_api"),
+    path("api/label-image/", views.label_image_api, name="label_image_api"),
 ]
