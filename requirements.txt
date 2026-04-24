@@ -6,7 +6,7 @@ uvicorn[standard]       # FastAPI 실행을 위한 ASGI 서버
 # --- Database & Models ---
 mysqlclient             # MySQL 연결 (Django/FastAPI 공용)
 pandas                  # CSV 데이터 가공 및 DB 주입용
-pydantic>=2.0.0         # FastAPI 데이터 검증용
+pydantic>=2.13.3         # FastAPI 데이터 검증용
 
 # --- AI & LLM Orchestration ---
 langchain>=0.1.0        # LLM 파이프라인 구축
