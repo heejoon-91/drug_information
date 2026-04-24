@@ -1,11 +1,14 @@
 import base64
+import inspect
 import json
 import logging
 import mimetypes
 import os
-from typing import Dict, List
+from pathlib import Path
+from typing import Dict, List, Optional
 
-from services.ai_service_v2 import AIService
+from django.conf import settings
+
 from services.ingredient_utils import canonicalize_ingredient_name
 
 logger = logging.getLogger(__name__)
@@ -14,6 +17,15 @@ logger = logging.getLogger(__name__)
 class ImageLabelService:
     ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
     MAX_UPLOAD_BYTES = int(os.getenv("LABEL_IMAGE_MAX_BYTES", str(8 * 1024 * 1024)))
+    OPENAI_KEY_NAMES = (
+        "OPENAI_API_KEY",
+        "OPENAI_KEY",
+        "OPENAI_VISION_API_KEY",
+    )
+    OPENAI_MODEL_NAMES = (
+        "OPENAI_VISION_MODEL",
+        "OPENAI_MODEL",
+    )
 
     @classmethod
     def _guess_content_type(cls, uploaded_file) -> str:
@@ -94,11 +106,169 @@ class ImageLabelService:
         return normalized
 
     @classmethod
+    def _candidate_env_paths(cls) -> List[Path]:
+        here = Path(__file__).resolve()
+        candidates: List[Path] = []
+        search_roots = [Path.cwd(), here.parent] + list(here.parents)
+        seen = set()
+        for root in search_roots:
+            try:
+                root = root.resolve()
+            except Exception:
+                continue
+            if root in seen:
+                continue
+            seen.add(root)
+            for candidate in (
+                root / ".env",
+                root / "skn22_4th_prj" / ".env",
+            ):
+                if candidate not in candidates:
+                    candidates.append(candidate)
+        return candidates
+
+    @staticmethod
+    def _strip_quotes(value: str) -> str:
+        token = str(value or "").strip()
+        if len(token) >= 2 and token[0] == token[-1] and token[0] in {"'", '"'}:
+            return token[1:-1]
+        return token
+
+    @classmethod
+    def _load_dotenv_fallback(cls) -> None:
+        needs_key = not any(os.getenv(name) for name in cls.OPENAI_KEY_NAMES)
+        needs_model = not any(os.getenv(name) for name in cls.OPENAI_MODEL_NAMES)
+        if not needs_key and not needs_model:
+            return
+
+        for env_path in cls._candidate_env_paths():
+            if not env_path.exists() or not env_path.is_file():
+                continue
+            try:
+                raw = env_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                try:
+                    raw = env_path.read_text(encoding="utf-8-sig")
+                except Exception:
+                    logger.warning("failed to decode .env file: %s", env_path)
+                    continue
+            except Exception as exc:
+                logger.warning("failed to read .env file %s: %s", env_path, exc)
+                continue
+
+            loaded_any = False
+            for line in raw.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if stripped.startswith("export "):
+                    stripped = stripped[7:].strip()
+                if "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if not key:
+                    continue
+                if value and value[0] not in {"'", '"'} and " #" in value:
+                    value = value.split(" #", 1)[0].strip()
+                value = cls._strip_quotes(value)
+                if key and value and not os.getenv(key):
+                    os.environ[key] = value
+                    loaded_any = True
+            if loaded_any:
+                logger.info("loaded fallback environment values from %s", env_path)
+            if any(os.getenv(name) for name in cls.OPENAI_KEY_NAMES):
+                return
+
+    @classmethod
+    def _get_from_settings(cls, names: tuple[str, ...]) -> Optional[str]:
+        for name in names:
+            value = getattr(settings, name, None)
+            if value:
+                return str(value).strip()
+        return None
+
+    @classmethod
+    def _resolve_openai_api_key(cls) -> str:
+        for name in cls.OPENAI_KEY_NAMES:
+            value = os.getenv(name)
+            if value:
+                return str(value).strip()
+
+        cls._load_dotenv_fallback()
+        for name in cls.OPENAI_KEY_NAMES:
+            value = os.getenv(name)
+            if value:
+                return str(value).strip()
+
+        value = cls._get_from_settings(cls.OPENAI_KEY_NAMES)
+        if value:
+            os.environ.setdefault("OPENAI_API_KEY", value)
+            return value
+        return ""
+
+    @classmethod
+    def _resolve_openai_model(cls) -> str:
+        for name in cls.OPENAI_MODEL_NAMES:
+            value = os.getenv(name)
+            if value:
+                return str(value).strip()
+        value = cls._get_from_settings(cls.OPENAI_MODEL_NAMES)
+        if value:
+            return value
+        return "gpt-4o-mini"
+
+    @classmethod
+    def _resolve_openai_base_url(cls) -> str:
+        value = os.getenv("OPENAI_BASE_URL") or getattr(settings, "OPENAI_BASE_URL", "")
+        return str(value or "").strip()
+
+    @classmethod
+    def _get_async_client(cls):
+        # 1) Prefer an already configured async client if AIService exposes one.
+        try:
+            from services.ai_service_v2 import AIService  # local import to avoid startup issues
+
+            getter = getattr(AIService, "get_client", None)
+            if callable(getter):
+                client = getter()
+                create_fn = getattr(getattr(getattr(client, "chat", None), "completions", None), "create", None)
+                if client is not None and callable(create_fn) and inspect.iscoroutinefunction(create_fn):
+                    return client
+        except Exception as exc:
+            logger.warning("AIService.get_client() unavailable for image analysis fallback: %s", exc)
+
+        # 2) Fallback: build a direct AsyncOpenAI client after loading .env ourselves.
+        api_key = cls._resolve_openai_api_key()
+        if not api_key:
+            searched = ", ".join(str(path) for path in cls._candidate_env_paths()[:6])
+            raise RuntimeError(
+                "OpenAI API 키를 찾지 못했습니다. "
+                "`.env`에 `OPENAI_API_KEY=...` 형식으로 저장되어 있는지 확인해 주세요. "
+                f"확인 경로: {searched}"
+            )
+
+        try:
+            from openai import AsyncOpenAI
+        except Exception as exc:
+            logger.error("openai package import failed: %s", exc)
+            raise RuntimeError("OpenAI SDK를 불러오지 못했습니다. requirements.txt 설치 상태를 확인해 주세요.") from exc
+
+        kwargs = {"api_key": api_key}
+        base_url = cls._resolve_openai_base_url()
+        if base_url:
+            kwargs["base_url"] = base_url
+        organization = os.getenv("OPENAI_ORG_ID") or getattr(settings, "OPENAI_ORG_ID", "")
+        if organization:
+            kwargs["organization"] = str(organization).strip()
+        os.environ.setdefault("OPENAI_API_KEY", api_key)
+        return AsyncOpenAI(**kwargs)
+
+    @classmethod
     async def analyze_label_image(cls, uploaded_file) -> Dict:
         data_url = cls._to_data_url(uploaded_file)
-        client = AIService.get_client()
-        if not client:
-            raise RuntimeError("OpenAI API 키가 설정되지 않아 이미지 분석을 수행할 수 없습니다.")
+        client = cls._get_async_client()
 
         system_prompt = (
             "You analyze photos of U.S. OTC medicine packaging, Drug Facts panels, or warning labels.\n"
@@ -178,7 +348,7 @@ class ImageLabelService:
 
         try:
             response = await client.chat.completions.create(
-                model=os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini"),
+                model=cls._resolve_openai_model(),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {
@@ -196,7 +366,7 @@ class ImageLabelService:
             data = json.loads(raw)
         except Exception as exc:
             logger.error("image label analysis failed: %s", exc)
-            raise RuntimeError("이미지 분석 모델 호출에 실패했습니다.") from exc
+            raise RuntimeError("이미지 분석 모델 호출에 실패했습니다. OpenAI 키, 모델명, 네트워크 상태를 확인해 주세요.") from exc
 
         product_name = str((data or {}).get("product_name") or "").strip()
         active_ingredients = cls._normalize_active_ingredients((data or {}).get("active_ingredients", []))
