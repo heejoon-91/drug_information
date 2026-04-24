@@ -36,6 +36,6 @@ jinja2                  # 템플릿 엔진 (필수)
 tiktoken                # OpenAI 토큰 계산 (권장)
 supabase
 transformers>=4.45.0
-sentence-transformers>=3.0.0
+sentence-transformers>=5.4.1
 accelerate>=0.34.0
 torch>=2.2.0
