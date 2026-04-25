@@ -1,6 +1,6 @@
 # --- Frameworks ---
 django>=4.2.0           # 유저 관리 및 DB 어드민
-fastapi>=0.100.0        # 고성능 AI 파이프라인 엔진
+fastapi>=0.136.1        # 고성능 AI 파이프라인 엔진
 uvicorn[standard]       # FastAPI 실행을 위한 ASGI 서버
 
 # --- Database & Models ---
