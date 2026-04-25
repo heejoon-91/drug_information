@@ -13,7 +13,7 @@ langchain>=0.1.0        # LLM 파이프라인 구축
 langchain-openai        # OpenAI 연동 (필요 시)
 langgraph>=0.0.10       # LangGraph 워크플로우 제어 (필수)
 langsmith               # LangGraph 디버깅 및 트레이싱
-openai>=1.0.0           # AsyncOpenAI 사용을 위한 공식 SDK
+openai>=2.32.0           # AsyncOpenAI 사용을 위한 공식 SDK
 
 # --- API & Networking ---
 httpx                   # FastAPI에서 FDA API를 호출할 비동기 클라이언트
